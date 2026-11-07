@@ -1,0 +1,34 @@
+<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WonderNutrition – Studio</title><link rel="stylesheet" href="style.css"></head><body>
+<header><div><h1>👩‍⚕️ Area studio</h1><p>Genera data.json da caricare su GitHub</p></div></header>
+<main id="app"></main><script src="crypto.js"></script>
+<script>
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const today=()=>new Date().toISOString().slice(0,10);
+let D;try{D=JSON.parse(localStorage.getItem("wn_admin"))}catch(e){}
+D=D||{patients:[],challenge:{month:today().slice(0,7),title:"",tasks:[],target:20},notices:[]};let msg="",edit=-1;
+const save=()=>{try{localStorage.setItem("wn_admin",JSON.stringify(D))}catch(e){}};
+const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x%31]).join("");
+function dl(name,obj){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:"application/json"}));a.download=name;a.click()}
+function render(){const p=D.patients[edit];const c=D.challenge;
+document.getElementById("app").innerHTML=`<div class="card"><h2>${p?"Modifica paziente":"Nuovo paziente"}</h2><input id="pn" placeholder="Nome e cognome" value="${esc(p?.name)}"><textarea id="pp" placeholder="Piano alimentare">${esc(p?.plan)}</textarea><textarea id="pt" style="min-height:70px" placeholder="Note (facoltative)">${esc(p?.notes)}</textarea><button id="addp">${p?"Salva":"Aggiungi (genera codice)"}</button>${p?'<button class="sec" id="canc">Annulla</button>':""}<p class="mu">${esc(msg)}</p></div>
+<div class="card"><h2>Pazienti (${D.patients.length})</h2>${D.patients.map((x,i)=>`<div class="task"><div><b>${esc(x.name)}</b><br>Codice: <code>${esc(x.code)}</code></div><span><button class="sec" data-e="${i}">Modifica</button><button class="sec" data-d="${i}">Elimina</button></span></div>`).join("")||'<p class="mu">Nessun paziente.</p>'}</div>
+<div class="card"><h2>Sfida mensile</h2><input id="cm" type="month" value="${esc(c.month)}"><input id="ct" placeholder="Titolo" value="${esc(c.title)}"><textarea id="ck" placeholder="Una abitudine per riga">${esc(c.tasks.join("\n"))}</textarea><input id="cg" type="number" min="1" max="31" value="${c.target}"><button id="savec">Salva sfida</button> <button class="sec" id="noc">Nessuna sfida</button></div>
+<div class="card"><h2>Avvisi</h2><textarea id="nt" style="min-height:70px" placeholder="Nuovo avviso"></textarea><button id="addn">Aggiungi</button>${D.notices.map((n,i)=>`<div class="notice">${esc(n.date)} – ${esc(n.text)} <button class="sec" data-n="${i}">✕</button></div>`).join("")}</div>
+<div class="card"><h2>Pubblica</h2><p class="mu">1) Scarica data.json e caricalo su GitHub sostituendo quello esistente. 2) Tieni al sicuro il backup: contiene i codici e i piani in chiaro.</p><button id="exp">Scarica data.json</button><button class="sec" id="bk">Scarica backup privato</button><label class="btn sec">Importa backup<input type="file" id="imp" accept=".json" hidden></label></div>`;
+const $=i=>document.getElementById(i);
+$("addp").onclick=()=>{const n=$("pn").value.trim(),pl=$("pp").value.trim();if(!n||!pl){msg="Nome e piano obbligatori";render();return}
+ if(p){Object.assign(p,{name:n,plan:pl,notes:$("pt").value.trim(),updated:today()});msg="Salvato";edit=-1}else{const code=gen();D.patients.push({name:n,plan:pl,notes:$("pt").value.trim(),updated:today(),code});msg="Creato. Codice: "+code}save();render()};
+$("canc")&&($("canc").onclick=()=>{edit=-1;render()});
+document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{edit=+b.dataset.e;render();scrollTo(0,0)});
+document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{if(confirm("Eliminare?")){D.patients.splice(+b.dataset.d,1);edit=-1;save();render()}});
+$("savec").onclick=()=>{D.challenge={month:$("cm").value,title:$("ct").value.trim(),tasks:$("ck").value.split("\n").map(x=>x.trim()).filter(Boolean),target:Math.max(1,+$("cg").value||20)};save();render()};
+$("noc").onclick=()=>{D.challenge={month:today().slice(0,7),title:"",tasks:[],target:20};save();render()};
+$("addn").onclick=()=>{const t=$("nt").value.trim();if(t){D.notices.unshift({date:today(),text:t});save();render()}};
+document.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{D.notices.splice(+b.dataset.n,1);save();render()});
+$("exp").onclick=async()=>{msg="";const plans=[];for(const x of D.patients)plans.push(await encrypt({name:x.name,plan:x.plan,notes:x.notes,updated:x.updated},x.code));
+ const c=D.challenge;dl("data.json",{challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans})};
+$("bk").onclick=()=>dl("backup-privato.json",D);
+$("imp").onchange=async e=>{try{D=JSON.parse(await e.target.files[0].text());save();render()}catch(x){alert("File non valido")}}}
+render();
+</script></body></html>
