@@ -34,7 +34,7 @@ const save=()=>{try{localStorage.setItem("wn_admin",JSON.stringify(D))}catch(e){
 const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x%31]).join("");
 function say(t,o={}){const m=$("msgbox"),l=$("live");m.textContent=t;m.hidden=false;m.classList.toggle("err",!!o.err);
  if(o.focus)m.focus();else{l.setAttribute("aria-live",o.err?"assertive":"polite");l.textContent="";setTimeout(()=>l.textContent=t,60)}}
-function render(f){const p=D.patients[edit],c=D.challenge,auto=challengeFor({challenge:null}),ovr=c.title&&c.tasks.length&&(c.month==CM||c.month==NX);
+function render(f){const p=D.patients[edit],c=D.challenge,auto=(typeof challengeFor=="function"?challengeFor({challenge:null}):{title:"non disponibile (manca challenges.js)"}),ovr=c.title&&c.tasks.length&&(c.month==CM||c.month==NX);
 const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-pub","Pubblicazione e backup"]];
 $("app").innerHTML=`<nav class="card" aria-label="Vai a una sezione"><ul class="l secnav">${sec.map(x=>`<li><a class="btn sec" href="#${x[0]}">${x[1]}</a></li>`).join("")}</ul></nav>
 <section class="card" aria-labelledby="h-new"><h2 id="h-new" tabindex="-1">${p?"Modifica paziente: "+esc(p.name):"Nuovo paziente"}</h2>
@@ -97,8 +97,13 @@ $("exp").onclick=async()=>{say("Preparazione del pacchetto in corso.");const pla
 $("bk").onclick=async()=>{const pdfs={};for(const x of D.patients){const b=x.pdfFile&&await idbGet(x.code);if(b)pdfs[x.code]=b64(b)}dl("backup-privato.json",{...D,pdfs});say("Backup privato scaricato. Conservalo in un posto sicuro.",{focus:true})};
 $("imp").onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!Array.isArray(j.patients))throw 0;for(const k in j.pdfs||{})await idbSet(k,ub64(j.pdfs[k]));delete j.pdfs;D=j;edit=-1;save();render();say("Backup importato.",{focus:true})}catch(x){say("Il file non è un backup valido.",{err:true,focus:true})}}}
 async function sha(t){return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t))),b=>b.toString(16).padStart(2,"0")).join("")}
-function lock(err){$("app").innerHTML=`<section class="card" aria-labelledby="h-lock"><h2 id="h-lock">Accesso all'area studio</h2><form id="lf"><label for="ac">Codice amministratore</label><input id="ac" type="password" inputmode="numeric" autocomplete="off" aria-describedby="lerr"><p id="lerr" role="${err?"alert":"status"}">${err?"Codice errato. Riprova.":""}</p><button type="submit">Entra</button></form></section>`;
- $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";if(await sha("wn-admin:"+$("ac").value.trim())===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)};
+function problems(){const p=[];
+ if(!(window.crypto&&crypto.subtle))p.push("Questo browser non consente la verifica sicura: apri la pagina dall'indirizzo https di GitHub Pages, non da un file salvato.");
+ if(typeof challengeFor!=="function")p.push("Nel repository manca il file challenges.js: caricalo accanto ad admin.html.");
+ if(typeof encryptBytes!=="function")p.push("Il file crypto.js nel repository non è aggiornato: sostituiscilo con l'ultima versione.");return p}
+window.addEventListener("error",e=>{try{say("Errore nella pagina: "+e.message+". "+problems().join(" "),{err:true})}catch(x){}});
+function lock(err){$("app").innerHTML=`${problems().length?`<div class="card msgbox err" role="alert">${problems().map(esc).join(" ")}</div>`:""}<section class="card" aria-labelledby="h-lock"><h2 id="h-lock">Accesso all'area studio</h2><form id="lf"><label for="ac">Codice amministratore</label><input id="ac" type="password" inputmode="numeric" autocomplete="off" aria-describedby="lerr"><p id="lerr" role="${err?"alert":"status"}">${err?"Codice errato. Riprova.":""}</p><button type="submit">Entra</button></form></section>`;
+ $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";try{if(await sha("wn-admin:"+$("ac").value.trim())===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)}catch(x){$("lerr").setAttribute("role","alert");$("lerr").textContent="Errore: "+(x&&x.message||x)+". "+problems().join(" ")}};
  $("ac").focus()}
 let ok=false;try{ok=sessionStorage.getItem("wn_ok")==="1"}catch(e){}
 ok?render():lock();
