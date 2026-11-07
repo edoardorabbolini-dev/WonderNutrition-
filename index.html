@@ -1,8 +1,8 @@
 <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>WonderNutrition</title><meta name="theme-color" content="#1ab4d6"><link rel="stylesheet" href="style.css"></head><body>
-<header><div class="logo"><svg width="34" height="40" viewBox="0 0 34 40"><path d="M17 6C7 6 3 15 3 23c0 9 6 15 14 15s14-6 14-15C31 15 27 6 17 6z" fill="#1ab4d6"/><path d="M17 4c3-4 9-4 12-2-2 4-7 6-12 2z" fill="#1190ad"/><circle cx="17" cy="23" r="3.5" fill="#fff"/><path d="M17 27v6M11 31l6-4 6 4" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg><div><h1>WonderNutrition</h1><p>Biologa Nutrizionista · be your better</p></div></div><div class="stats" id="stats"></div></header>
-<main id="app"></main><nav id="nav"></nav>
-<script src="crypto.js"></script><script src="wondy.js"></script>
+<header><div class="logo"><svg width="34" height="40" viewBox="0 0 34 40" aria-hidden="true" focusable="false"><path d="M17 6C7 6 3 15 3 23c0 9 6 15 14 15s14-6 14-15C31 15 27 6 17 6z" fill="#1ab4d6"/><path d="M17 4c3-4 9-4 12-2-2 4-7 6-12 2z" fill="#1190ad"/><circle cx="17" cy="23" r="3.5" fill="#fff"/><path d="M17 27v6M11 31l6-4 6 4" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg><div><h1>WonderNutrition</h1><p>Biologa Nutrizionista · be your better</p></div></div><div class="stats" id="stats"></div></header>
+<main id="app" tabindex="-1" style="outline:0"></main><footer style="text-align:center;margin:0 0 100px;padding:0 14px"><a class="btn sec" href="admin.html">Area studio per la dottoressa</a></footer><nav id="nav" aria-label="Menu principale"></nav>
+<script src="crypto.js"></script><script src="challenges.js"></script><script src="wondy.js"></script>
 <script>
 const BOOK="http://www.supersaas.it/schedule/WonderNutrition/WonderNutritionAppuntamenti",SITE="https://wondernutrition.jimdosite.com/";
 const app=document.getElementById("app"),nav=document.getElementById("nav");
@@ -16,45 +16,48 @@ async function load(){try{S.data=await (await fetch("data.json?"+Date.now())).js
  if(S.code)await unlock(S.code,true);render()}
 async function unlock(code,silent){S.busy=true;S.plan=null;
  for(const e of S.data.plans){const p=await decrypt(e,code);if(p){S.plan=p;break}}
+ S.pdfUrl="";if(S.plan&&S.plan.pdf){try{const r=await fetch(S.plan.pdf+"?"+Date.now());const d=await decryptBytes(new Uint8Array(await r.arrayBuffer()),code);S.pdfUrl=URL.createObjectURL(new Blob([d],{type:"application/pdf"}))}catch(e){}}
  S.busy=false;if(S.plan){S.code=code;ls.set("wn_code",code);S.msg=""}else{S.msg=silent?"":"Ops! Questo codice non funziona. Riprova!";if(silent){S.code="";ls.del("wn_code")}}}
 const prog=()=>{try{return JSON.parse(ls.get("wn_prog_"+S.code)||"{}")}catch(e){return{}}};
 function streak(P){const d=new Set(P.days||[]);let n=0,t=new Date();if(!d.has(t.toISOString().slice(0,10)))t.setDate(t.getDate()-1);
  while(d.has(t.toISOString().slice(0,10))){n++;t.setDate(t.getDate()-1)}return n}
-function confetti(){const col=["#58cc02","#ffb020","#1cb0f6","#ff4b4b","#ce82ff"];for(let i=0;i<40;i++){const e=document.createElement("i");e.className="conf";
+function confetti(){const col=["#58cc02","#ffb020","#1cb0f6","#ff4b4b","#ce82ff"];for(let i=0;i<40;i++){const e=document.createElement("i");e.className="conf";e.setAttribute("aria-hidden","true");
  e.style.left=Math.random()*100+"vw";e.style.background=col[i%5];e.style.animationDelay=Math.random()*.4+"s";e.style.borderRadius=i%2?"50%":"2px";document.body.appendChild(e);setTimeout(()=>e.remove(),2500)}}
-const hero=(txt,mood)=>`<div class="hero">${wondy(mood)}<div class="bubble">${txt}</div></div>`;
-function render(){
- const P=S.code?prog():{};document.getElementById("stats").innerHTML=S.plan?`<span>🔥 ${streak(P)}</span><span>⭐ ${P.xp||0}</span>`:"";
+const hero=(txt,mood,role)=>`<div class="hero">${wondy(mood)}<div class="bubble" ${role?`role="${role}"`:""}>${txt}</div></div>`;
+function render(foc){
+ const P=S.code?prog():{};document.getElementById("stats").innerHTML=S.plan?`<span><span aria-hidden="true">🔥</span> ${streak(P)}<span class="sr"> giorni consecutivi</span></span><span><span aria-hidden="true">⭐</span> ${P.xp||0}<span class="sr"> punti</span></span>`:"";
  const t=[["plan","🥗","Piano"],["sfida","🏆","Sfida"],["prenota","📅","Prenota"],["avvisi","🔔","Avvisi"]];
- nav.innerHTML=t.map(x=>`<button class="${S.tab==x[0]?"on":""}" data-t="${x[0]}"><span>${x[1]}</span>${x[2]}</button>`).join("");
- nav.querySelectorAll("button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;render();scrollTo(0,0)});
- app.innerHTML={plan:vPlan,sfida:vSfida,prenota:vPrenota,avvisi:vAvvisi}[S.tab]();bind()}
-const loginBox=()=>hero(S.busy?"Controllo il codice… 🐾":esc(S.msg)||"Woof! Sono <b>Wondy</b>, il tuo dottore a quattro zampe! Inserisci il codice che ti ha dato la dottoressa.",S.msg?"":"happy")+
- `<div class="card ${S.msg?"shake":""}"><h2>Entriamo!</h2><input id="code" placeholder="IL TUO CODICE" autocapitalize="characters"><button id="login">Via!</button></div>`;
+ nav.innerHTML=t.map(x=>`<button class="${S.tab==x[0]?"on":""}" data-t="${x[0]}" ${S.tab==x[0]?'aria-current="page"':""}><span aria-hidden="true">${x[1]}</span>${x[2]}</button>`).join("");
+ nav.querySelectorAll("button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;render(true);scrollTo(0,0)});
+ app.innerHTML={plan:vPlan,sfida:vSfida,prenota:vPrenota,avvisi:vAvvisi}[S.tab]().replace(/\p{Extended_Pictographic}\uFE0F?/gu,m=>`<span aria-hidden="true">${m}</span>`);bind();
+ document.title=({plan:"Piano",sfida:"Sfida",prenota:"Prenota",avvisi:"Avvisi"})[S.tab]+" – WonderNutrition";
+ if(foc){const h=app.querySelector(".bubble,h2");if(h){h.tabIndex=-1;h.focus()}}}
+const loginBox=()=>hero(S.busy?"Controllo il codice… 🐾":esc(S.msg)||"Woof! Sono <b>Wondy</b>, il tuo dottore a quattro zampe! Inserisci il codice che ti ha dato la dottoressa.",S.msg?"":"happy",S.msg?"alert":"")+
+ `<div class="card ${S.msg?"shake":""}"><h2>Entriamo!</h2><form id="lf"><label for="code">Il tuo codice personale</label><input id="code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit" id="login">Via!</button></form><p><a href="admin.html">Sei la dottoressa? Vai all'area studio</a></p></div>`;
 function vPlan(){if(!S.plan)return loginBox();const p=S.plan;
  return hero(`Ciao <b>${esc(p.name)}</b>! 🎉 Ecco il tuo piano su misura. Insieme ce la faremo!`,"happy")+
- `<div class="card"><h2>🥗 Il tuo piano</h2><div class="mu">Aggiornato il ${esc(p.updated||"")}</div><div class="plan" style="margin-top:8px">${esc(p.plan)}</div>${p.notes?`<h3>Note della dottoressa</h3><div class="plan">${esc(p.notes)}</div>`:""}</div>
+ `<div class="card"><h2>🥗 Il tuo piano</h2><div class="mu">Aggiornato il ${esc(p.updated||"")}</div>${S.pdfUrl?`<p><a class="btn" href="${S.pdfUrl}" target="_blank" rel="noopener">📄 Apri il piano (PDF)</a><a class="btn sec" href="${S.pdfUrl}" download="piano-alimentare.pdf">Scarica</a></p>`:p.pdf?'<p class="mu">PDF non disponibile, riprova più tardi.</p>':""}<div class="plan" style="margin-top:8px">${esc(p.plan||"")}</div>${p.notes?`<h3>Note della dottoressa</h3><div class="plan">${esc(p.notes)}</div>`:""}</div>
  <button class="sec" id="logout">Esci</button><a class="btn blue" href="${SITE}" target="_blank" rel="noopener">Il nostro sito</a>`}
-function vSfida(){const ch=S.data&&S.data.challenge;
+function vSfida(){const ch=challengeFor(S.data);
  if(!ch)return hero("Sto preparando una nuova sfida per te… torna a trovarmi presto! 🐕","")+`<div class="card"><h2>🏆 Sfida del mese</h2><p class="mu">Nessuna sfida attiva.</p></div>`;
  if(!S.plan)return loginBox();
  const P0=prog(),P=P0.month==ch.month?P0:{counts:{},last:{}},tg=ch.target||20;
  const c=ch.tasks.map((_,i)=>Math.min(P.counts[i]||0,tg)),tot=c.reduce((a,b)=>a+b,0),pct=Math.round(tot/(ch.tasks.length*tg)*100);
  const B=[[25,"🌱 Germoglio"],[50,"🥕 A metà strada"],[75,"💪 Quasi campione"],[100,"👑 Campione!"]];
  const say=pct>=100?"SEI UN CAMPIONE! 🏆 Sfida completata!":pct>=50?"Più di metà strada! Non mollare! 💪":pct>0?"Bravissimo, continua così! 🐾":"Pronti, partenza, via! Tocca \"Fatto!\" quando completi un'abitudine.";
- return hero(say,pct>0?"happy":"")+`<div class="card"><h2>🏆 ${esc(ch.title)}</h2><div class="mu">${esc(mname(ch.month))} · ${tg} giorni per ogni abitudine</div><p><b>${tot}</b> punti · ${pct}%</p><div class="bar"><i style="width:0" data-w="${pct}"></i></div>
+ return hero(say,pct>0?"happy":"")+`<div class="card"><h2>🏆 ${esc(ch.title)}</h2><div class="mu">${esc(mname(ch.month))} · ${tg} giorni per ogni abitudine</div><p><b>${tot}</b> punti · ${pct}%</p><div class="bar" role="progressbar" aria-label="Avanzamento della sfida" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:0" data-w="${pct}"></i></div>
  <h3>Badge</h3><div class="badges">${B.map(b=>`<span class="bd ${pct>=b[0]?"":"off"}">${b[1]}</span>`).join("")}</div></div>
- <div class="card"><h2>Abitudini di oggi</h2>${ch.tasks.map((t,i)=>{const d=P.last[i]==today();return `<div class="task"><div>${esc(t)}<div class="mu">${c[i]}/${tg} giorni</div></div><button data-done="${i}" ${d?"disabled":""}>${d?"✓ Fatto":"Fatto!"}</button></div>`}).join("")}</div>`}
+ <div class="card"><h2>Abitudini di oggi</h2>${ch.tasks.map((t,i)=>{const d=P.last[i]==today();return `<div class="task"><div>${esc(t)}<div class="mu">${c[i]}/${tg} giorni</div></div><button data-done="${i}" aria-label="${d?"Già fatto oggi":"Segna come fatto"}: ${esc(t)}" ${d?"disabled":""}>${d?"✓ Fatto":"Fatto!"}</button></div>`}).join("")}</div>`}
 const vPrenota=()=>hero("Vuoi vedere la dottoressa? Prenota qui! Io faccio la guardia alla sala d'attesa 🐶","happy")+
  `<div class="card"><h2>📅 Prenota una visita</h2><p class="mu">Si apre l'agenda dello studio: servono nome, cognome, e-mail e telefono.</p><a class="btn" href="${BOOK}" target="_blank" rel="noopener">Apri l'agenda</a></div>
- <div class="card"><h2>⏰ Promemoria</h2><p class="mu">Hai già un appuntamento? Ti avviso io il giorno prima!</p><input type="date" id="ad"><input type="time" id="at" value="10:00"><button class="blue btn" id="ics" style="border:0;border-bottom:5px solid var(--bld)">Scarica promemoria</button><p class="mu">${esc(S.msg)}</p></div>`;
+ <div class="card"><h2>⏰ Promemoria</h2><p class="mu">Hai già un appuntamento? Ti avviso io il giorno prima!</p><label for="ad">Data della visita</label><input type="date" id="ad"><label for="at">Ora della visita</label><input type="time" id="at" value="10:00"><button class="blue btn" id="ics" style="border:0;border-bottom:5px solid var(--bld)">Scarica promemoria</button><p class="mu">${esc(S.msg)}</p></div>`;
 const vAvvisi=()=>{const n=(S.data&&S.data.notices)||[];return hero(n.length?"Ci sono novità dallo studio! 📣":"Tutto tranquillo, nessuna novità. Posso farmi un pisolino? 😴","")+
  `<div class="card"><h2>🔔 Avvisi</h2>${n.length?n.map(x=>`<div class="notice"><div class="mu">${esc(x.date)}</div>${esc(x.text)}</div>`).join(""):'<p class="mu">Nessun avviso.</p>'}</div>`};
 function bind(){const $=i=>document.getElementById(i);
  document.querySelectorAll(".bar i[data-w]").forEach(e=>setTimeout(()=>e.style.width=e.dataset.w+"%",80));
- $("login")&&($("login").onclick=async()=>{const c=$("code").value.trim().toUpperCase();if(!c)return;S.msg="";S.busy=true;render();await unlock(c);if(S.plan)confetti();render()});
+ $("lf")&&($("lf").onsubmit=async e=>{e.preventDefault();const c=$("code").value.trim().toUpperCase();if(!c)return;S.msg="";S.busy=true;render();await unlock(c);if(S.plan)confetti();render(true)});
  $("logout")&&($("logout").onclick=()=>{ls.del("wn_code");S.code="";S.plan=null;render()});
- app.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{const ch=S.data.challenge,i=+b.dataset.done;let P=prog();
+ app.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{const ch=challengeFor(S.data),i=+b.dataset.done;let P=prog();
   if(P.month!=ch.month)P={...P,month:ch.month,counts:{},last:{}};P.counts=P.counts||{};P.last=P.last||{};
   P.counts[i]=(P.counts[i]||0)+1;P.last[i]=today();P.xp=(P.xp||0)+10;P.days=[...new Set([...(P.days||[]),today()])];
   ls.set("wn_prog_"+S.code,JSON.stringify(P));confetti();render()});

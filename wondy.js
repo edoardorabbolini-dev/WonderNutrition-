@@ -1,5 +1,5 @@
 function wondy(mood){const h=mood=="happy";
-return `<svg viewBox="0 0 200 230" aria-label="Wondy, il labrador dottore">
+return `<svg viewBox="0 0 200 230" aria-hidden="true" focusable="false">
 <ellipse cx="100" cy="222" rx="55" ry="6" fill="#000" opacity=".12"/>
 <path d="M52 150h96l10 68H42z" fill="#fff" stroke="#d8e3da" stroke-width="3"/>
 <path d="M88 150l12 30 12-30z" fill="#1ab4d6"/><path d="M100 188v30" stroke="#d8e3da" stroke-width="3"/>

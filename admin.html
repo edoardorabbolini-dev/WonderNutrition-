@@ -1,34 +1,105 @@
 <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WonderNutrition – Studio</title><link rel="stylesheet" href="style.css"></head><body>
-<header><div><h1>Area studio</h1><p>Genera data.json da caricare su GitHub</p></div></header>
-<main id="app"></main><script src="crypto.js"></script>
+<title>Area studio – WonderNutrition</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"></head><body>
+<a class="skip" href="#main">Vai al contenuto principale</a>
+<header><div><h1 style="font:900 22px Nunito,sans-serif">Area studio</h1><p>WonderNutrition · Dott.ssa Martina Rabbolini</p></div><a class="btn sec" href="index.html">Torna all'app</a></header>
+<div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+<main id="main"><div id="msgbox" class="card msgbox" tabindex="-1" hidden></div><div id="app"></div></main>
+<script src="crypto.js"></script><script src="challenges.js"></script>
 <script>
+const HASH="278a8c78870ff0d1947c9ab006516c57ad830021f75c2d8c043d0b832fd3ab43";
+const $=i=>document.getElementById(i);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const today=()=>new Date().toISOString().slice(0,10);
+const spell=c=>Array.from(c).join(", ");
+const MESI=["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
+const mname=m=>MESI[+m.split("-")[1]-1]+" "+m.split("-")[0];
+const CM=today().slice(0,7),NX=(()=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+1);return d.toISOString().slice(0,7)})();
+const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open("wn",1);r.onupgradeneeded=()=>r.result.createObjectStore("pdf");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const idbSet=async(k,v)=>{const d=await idb();return new Promise((res,rej)=>{const t=d.transaction("pdf","readwrite");v===null?t.objectStore("pdf").delete(k):t.objectStore("pdf").put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})};
+const idbGet=async k=>{const d=await idb();return new Promise((res,rej)=>{const r=d.transaction("pdf").objectStore("pdf").get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})};
+const T=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc=d=>{let c=-1;for(const b of d)c=T[(c^b)&255]^(c>>>8);return(c^-1)>>>0};
+function zip(fs){const E=new TextEncoder(),P=[],C=[];let off=0;const u2=n=>[n&255,n>>8&255],u4=n=>[n&255,n>>8&255,n>>16&255,n>>>24&255];
+ for(const f of fs){const nm=E.encode(f.name),c=crc(f.data),s=f.data.length;
+  const lh=new Uint8Array([0x50,0x4b,3,4,20,0,0,8,0,0,0,0,0,0,...u4(c),...u4(s),...u4(s),...u2(nm.length),0,0]);
+  C.push(new Uint8Array([0x50,0x4b,1,2,20,0,20,0,0,8,0,0,0,0,0,0,...u4(c),...u4(s),...u4(s),...u2(nm.length),0,0,0,0,0,0,0,0,0,0,0,0,...u4(off)]),nm);
+  P.push(lh,nm,f.data);off+=lh.length+nm.length+s}
+ const cs=C.reduce((n,x)=>n+x.length,0);
+ return new Blob([...P,...C,new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u2(fs.length),...u2(fs.length),...u4(cs),...u4(off),0,0])],{type:"application/zip"})}
+
+function dl(name,obj){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:"application/json"}));a.download=name;a.click()}
 let D;try{D=JSON.parse(localStorage.getItem("wn_admin"))}catch(e){}
-D=D||{patients:[],challenge:{month:today().slice(0,7),title:"",tasks:[],target:20},notices:[]};let msg="",edit=-1;
+D=D||{patients:[],challenge:{month:CM,title:"",tasks:[],target:20},notices:[]};let edit=-1;
 const save=()=>{try{localStorage.setItem("wn_admin",JSON.stringify(D))}catch(e){}};
 const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x%31]).join("");
-function dl(name,obj){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:"application/json"}));a.download=name;a.click()}
-function render(){const p=D.patients[edit];const c=D.challenge;
-document.getElementById("app").innerHTML=`<div class="card"><h2>${p?"Modifica paziente":"Nuovo paziente"}</h2><input id="pn" placeholder="Nome e cognome" value="${esc(p?.name)}"><textarea id="pp" placeholder="Piano alimentare">${esc(p?.plan)}</textarea><textarea id="pt" style="min-height:70px" placeholder="Note (facoltative)">${esc(p?.notes)}</textarea><button id="addp">${p?"Salva":"Aggiungi (genera codice)"}</button>${p?'<button class="sec" id="canc">Annulla</button>':""}<p class="mu">${esc(msg)}</p></div>
-<div class="card"><h2>Pazienti (${D.patients.length})</h2>${D.patients.map((x,i)=>`<div class="task"><div><b>${esc(x.name)}</b><br>Codice: <code>${esc(x.code)}</code></div><span><button class="sec" data-e="${i}">Modifica</button><button class="sec" data-d="${i}">Elimina</button></span></div>`).join("")||'<p class="mu">Nessun paziente.</p>'}</div>
-<div class="card"><h2>Sfida mensile</h2><input id="cm" type="month" value="${esc(c.month)}"><input id="ct" placeholder="Titolo" value="${esc(c.title)}"><textarea id="ck" placeholder="Una abitudine per riga">${esc(c.tasks.join("\n"))}</textarea><input id="cg" type="number" min="1" max="31" value="${c.target}"><button id="savec">Salva sfida</button> <button class="sec" id="noc">Nessuna sfida</button></div>
-<div class="card"><h2>Avvisi</h2><textarea id="nt" style="min-height:70px" placeholder="Nuovo avviso"></textarea><button id="addn">Aggiungi</button>${D.notices.map((n,i)=>`<div class="notice">${esc(n.date)} – ${esc(n.text)} <button class="sec" data-n="${i}">✕</button></div>`).join("")}</div>
-<div class="card"><h2>Pubblica</h2><p class="mu">1) Scarica data.json e caricalo su GitHub sostituendo quello esistente. 2) Tieni al sicuro il backup: contiene i codici e i piani in chiaro.</p><button id="exp">Scarica data.json</button><button class="sec" id="bk">Scarica backup privato</button><label class="btn sec">Importa backup<input type="file" id="imp" accept=".json" hidden></label></div>`;
-const $=i=>document.getElementById(i);
-$("addp").onclick=()=>{const n=$("pn").value.trim(),pl=$("pp").value.trim();if(!n||!pl){msg="Nome e piano obbligatori";render();return}
- if(p){Object.assign(p,{name:n,plan:pl,notes:$("pt").value.trim(),updated:today()});msg="Salvato";edit=-1}else{const code=gen();D.patients.push({name:n,plan:pl,notes:$("pt").value.trim(),updated:today(),code});msg="Creato. Codice: "+code}save();render()};
-$("canc")&&($("canc").onclick=()=>{edit=-1;render()});
-document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{edit=+b.dataset.e;render();scrollTo(0,0)});
-document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{if(confirm("Eliminare?")){D.patients.splice(+b.dataset.d,1);edit=-1;save();render()}});
-$("savec").onclick=()=>{D.challenge={month:$("cm").value,title:$("ct").value.trim(),tasks:$("ck").value.split("\n").map(x=>x.trim()).filter(Boolean),target:Math.max(1,+$("cg").value||20)};save();render()};
-$("noc").onclick=()=>{D.challenge={month:today().slice(0,7),title:"",tasks:[],target:20};save();render()};
-$("addn").onclick=()=>{const t=$("nt").value.trim();if(t){D.notices.unshift({date:today(),text:t});save();render()}};
-document.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{D.notices.splice(+b.dataset.n,1);save();render()});
-$("exp").onclick=async()=>{msg="";const plans=[];for(const x of D.patients)plans.push(await encrypt({name:x.name,plan:x.plan,notes:x.notes,updated:x.updated},x.code));
- const c=D.challenge;dl("data.json",{challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans})};
-$("bk").onclick=()=>dl("backup-privato.json",D);
-$("imp").onchange=async e=>{try{D=JSON.parse(await e.target.files[0].text());save();render()}catch(x){alert("File non valido")}}}
-render();
+function say(t,o={}){const m=$("msgbox"),l=$("live");m.textContent=t;m.hidden=false;m.classList.toggle("err",!!o.err);
+ if(o.focus)m.focus();else{l.setAttribute("aria-live",o.err?"assertive":"polite");l.textContent="";setTimeout(()=>l.textContent=t,60)}}
+function render(f){const p=D.patients[edit],c=D.challenge,auto=challengeFor({challenge:null}),ovr=c.title&&c.tasks.length&&(c.month==CM||c.month==NX);
+const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-pub","Pubblicazione e backup"]];
+$("app").innerHTML=`<nav class="card" aria-label="Vai a una sezione"><ul class="l secnav">${sec.map(x=>`<li><a class="btn sec" href="#${x[0]}">${x[1]}</a></li>`).join("")}</ul></nav>
+<section class="card" aria-labelledby="h-new"><h2 id="h-new" tabindex="-1">${p?"Modifica paziente: "+esc(p.name):"Nuovo paziente"}</h2>
+<form id="pform"><label for="pn">Nome e cognome (obbligatorio)</label><input id="pn" autocomplete="off" aria-required="true" value="${esc(p?.name)}">
+<label for="pp">Piano alimentare in testo (facoltativo se carichi il PDF)</label><textarea id="pp">${esc(p?.plan)}</textarea>
+<label for="pdf">Piano alimentare in PDF (facoltativo, massimo 10 MB)</label><input id="pdf" type="file" accept="application/pdf">
+${p?.pdfFile?`<p>Per questo paziente è già caricato un PDF. <button type="button" class="sec" id="rp">Rimuovi il PDF</button></p>`:""}
+<label for="pt">Note per il paziente (facoltative)</label><textarea id="pt" style="min-height:80px">${esc(p?.notes)}</textarea>
+<button type="submit">${p?"Salva le modifiche":"Aggiungi paziente e genera il codice"}</button>${p?`<button type="button" class="sec" id="canc">Annulla la modifica</button>`:""}</form></section>
+<section class="card" aria-labelledby="h-list"><h2 id="h-list" tabindex="-1">Elenco pazienti (${D.patients.length})</h2>
+${D.patients.length?`<ul class="l">${D.patients.map((x,i)=>`<li class="task"><div><strong>${esc(x.name)}</strong>${x.pdfFile?`<span class="sr">, con PDF</span>`:""}<br><span class="mu">Codice <code aria-hidden="true">${esc(x.code)}</code><span class="sr">${spell(x.code)}</span></span></div><div class="acts"><button type="button" class="sec" data-c="${i}" aria-label="Copia il codice di ${esc(x.name)}">Copia codice</button><button type="button" class="sec" data-e="${i}" aria-label="Modifica ${esc(x.name)}">Modifica</button><button type="button" class="sec" data-d="${i}" aria-label="Elimina ${esc(x.name)}">Elimina</button></div></li>`).join("")}</ul>`:"<p>Nessun paziente inserito.</p>"}</section>
+<section class="card" aria-labelledby="h-ch"><h2 id="h-ch" tabindex="-1">Sfida mensile</h2>
+<p>La sfida è automatica: ogni mese l'app ne propone una nuova da sola. Sfida automatica di questo mese: ${esc(auto.title)}. ${ovr?`Hai impostato una sfida personalizzata per ${mname(c.month)}: ${esc(c.title)}.`:"Nessuna sfida personalizzata impostata."}</p>
+<h3>Imposta una sfida personalizzata (facoltativo)</h3>
+<form id="cform"><label for="cm">Mese</label><select id="cm"><option value="${CM}">${mname(CM)}</option><option value="${NX}" ${c.month==NX?"selected":""}>${mname(NX)}</option></select>
+<label for="ct">Titolo</label><input id="ct" autocomplete="off" value="${esc(c.title)}">
+<label for="ck">Abitudini, una per riga</label><textarea id="ck">${esc(c.tasks.join("\n"))}</textarea>
+<label for="cg">Giorni da completare per ogni abitudine</label><input id="cg" type="number" min="1" max="31" value="${c.target}">
+<button type="submit">Usa questa sfida</button><button type="button" class="sec" id="noc">Torna alla sfida automatica</button></form></section>
+<section class="card" aria-labelledby="h-not"><h2 id="h-not" tabindex="-1">Avvisi per i pazienti</h2>
+<form id="nform"><label for="nt">Testo del nuovo avviso</label><textarea id="nt" style="min-height:80px"></textarea><button type="submit">Aggiungi avviso</button></form>
+${D.notices.length?`<ul class="l">${D.notices.map((n,i)=>`<li class="task"><div><span class="mu">${esc(n.date)}</span><br>${esc(n.text)}</div><button type="button" class="sec" data-n="${i}" aria-label="Elimina l'avviso del ${esc(n.date)}: ${esc(n.text)}">Elimina</button></li>`).join("")}</ul>`:"<p>Nessun avviso pubblicato.</p>"}</section>
+<section class="card" aria-labelledby="h-pub"><h2 id="h-pub" tabindex="-1">Pubblicazione e backup</h2>
+<ol><li>Premi "Scarica pacchetto da pubblicare".</li><li>Decomprimi il file scaricato.</li><li>Su GitHub carica il file data.json e la cartella p, sostituendo quelli esistenti.</li></ol>
+<button type="button" id="exp">Scarica pacchetto da pubblicare (zip)</button>
+<button type="button" class="sec" id="bk">Scarica backup privato</button>
+<p class="mu">Il backup privato contiene codici e piani in chiaro: non caricarlo su GitHub.</p>
+<label for="imp">Importa un backup privato</label><input id="imp" type="file" accept=".json"></section>`;
+bind();if(f&&$(f))$(f).focus()}
+function bind(){const p=D.patients[edit];
+$("pform").onsubmit=async e=>{e.preventDefault();const n=$("pn").value.trim(),pl=$("pp").value.trim(),f=$("pdf").files[0];
+ if(!n){say("Scrivi il nome e cognome del paziente.",{err:true});$("pn").focus();return}
+ if(!pl&&!f&&!p?.pdfFile){say("Inserisci il piano in testo oppure carica un PDF.",{err:true});$("pp").focus();return}
+ if(f&&f.size>10485760){say("Il PDF è troppo grande: il massimo è 10 megabyte.",{err:true});return}
+ const code=p?p.code:gen(),o=p||{code};Object.assign(o,{name:n,plan:pl,notes:$("pt").value.trim(),updated:today()});
+ if(f){try{await idbSet(code,new Uint8Array(await f.arrayBuffer()));o.pdfFile=o.pdfFile||"p/"+Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,"0")).join("")+".enc"}catch(x){say("Non riesco a salvare il PDF in questo browser.",{err:true});return}}
+ if(p){edit=-1;save();render();say("Modifiche salvate per "+n+". Ricordati di scaricare e caricare il pacchetto aggiornato.",{focus:true})}
+ else{D.patients.push(o);save();render();say("Paziente creato: "+n+". Codice di accesso: "+code+". Lettera per lettera: "+spell(code)+".",{focus:true})}};
+$("rp")&&($("rp").onclick=async()=>{await idbSet(p.code,null);delete p.pdfFile;save();render("pn");say("PDF rimosso.")});
+$("canc")&&($("canc").onclick=()=>{edit=-1;render("pn");say("Modifica annullata.")});
+document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{const x=D.patients[+b.dataset.c];
+ (navigator.clipboard?navigator.clipboard.writeText(x.code):Promise.reject()).then(()=>say("Codice di "+x.name+" copiato negli appunti.")).catch(()=>say("Copia non riuscita. Il codice di "+x.name+" è "+spell(x.code)+".",{focus:true}))});
+document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{edit=+b.dataset.e;render("pn");say("Modifica di "+D.patients[edit].name+". Cambia i campi e premi Salva le modifiche.")});
+document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const x=D.patients[+b.dataset.d];if(confirm("Eliminare "+x.name+"? L'operazione non si può annullare.")){D.patients.splice(+b.dataset.d,1);idbSet(x.code,null).catch(()=>{});edit=-1;save();render("h-list");say(x.name+" eliminato. Ricordati di pubblicare il pacchetto aggiornato.")}});
+$("cform").onsubmit=e=>{e.preventDefault();const t=$("ct").value.trim(),k=$("ck").value.split("\n").map(x=>x.trim()).filter(Boolean);
+ if(!t||!k.length){say("Servono un titolo e almeno un'abitudine.",{err:true});$("ct").focus();return}
+ D.challenge={month:$("cm").value,title:t,tasks:k,target:Math.max(1,+$("cg").value||20)};save();render();say("Sfida personalizzata salvata per "+mname(D.challenge.month)+". Pubblica il pacchetto per renderla visibile.",{focus:true})};
+$("noc").onclick=()=>{D.challenge={month:CM,title:"",tasks:[],target:20};save();render();say("Tornata alla sfida automatica.",{focus:true})};
+$("nform").onsubmit=e=>{e.preventDefault();const t=$("nt").value.trim();if(!t){say("Scrivi il testo dell'avviso.",{err:true});$("nt").focus();return}
+ D.notices.unshift({date:today(),text:t});save();render();say("Avviso aggiunto. Pubblica il pacchetto per renderlo visibile.",{focus:true})};
+document.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{D.notices.splice(+b.dataset.n,1);save();render("h-not");say("Avviso eliminato.")});
+$("exp").onclick=async()=>{say("Preparazione del pacchetto in corso.");const plans=[],files=[];
+ for(const x of D.patients){const pl={name:x.name,plan:x.plan,notes:x.notes,updated:x.updated};
+  if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;files.push({name:x.pdfFile,data:await encryptBytes(b,x.code)})}}
+  plans.push(await encrypt(pl,x.code))}
+ const c=D.challenge,data={challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans};
+ files.unshift({name:"data.json",data:new TextEncoder().encode(JSON.stringify(data))});
+ const u=document.createElement("a");u.href=URL.createObjectURL(zip(files));u.download="wondernutrition-pubblicazione.zip";u.click();
+ say("Pacchetto scaricato: wondernutrition-pubblicazione.zip. Decomprimilo e carica su GitHub data.json e la cartella p.",{focus:true})};
+$("bk").onclick=async()=>{const pdfs={};for(const x of D.patients){const b=x.pdfFile&&await idbGet(x.code);if(b)pdfs[x.code]=b64(b)}dl("backup-privato.json",{...D,pdfs});say("Backup privato scaricato. Conservalo in un posto sicuro.",{focus:true})};
+$("imp").onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!Array.isArray(j.patients))throw 0;for(const k in j.pdfs||{})await idbSet(k,ub64(j.pdfs[k]));delete j.pdfs;D=j;edit=-1;save();render();say("Backup importato.",{focus:true})}catch(x){say("Il file non è un backup valido.",{err:true,focus:true})}}}
+async function sha(t){return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t))),b=>b.toString(16).padStart(2,"0")).join("")}
+function lock(err){$("app").innerHTML=`<section class="card" aria-labelledby="h-lock"><h2 id="h-lock">Accesso all'area studio</h2><form id="lf"><label for="ac">Codice amministratore</label><input id="ac" type="password" inputmode="numeric" autocomplete="off" aria-describedby="lerr"><p id="lerr" role="${err?"alert":"status"}">${err?"Codice errato. Riprova.":""}</p><button type="submit">Entra</button></form></section>`;
+ $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";if(await sha("wn-admin:"+$("ac").value.trim())===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)};
+ $("ac").focus()}
+let ok=false;try{ok=sessionStorage.getItem("wn_ok")==="1"}catch(e){}
+ok?render():lock();
 </script></body></html>
