@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Area studio – WonderNutrition</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"><link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0a7a95"><meta name="apple-mobile-web-app-title" content="WonderNutrition"></head><body>
+<title>Area studio – WonderNutrition</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"><link rel="icon" type="image/png" sizes="32x32" href="wn-favicon-32.png"><link rel="apple-touch-icon" href="wn-apple-touch.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0a7a95"><meta name="apple-mobile-web-app-title" content="WonderNutrition"></head><body>
 <a class="skip" href="#main">Vai al contenuto principale</a>
 <header><div><h1 style="font:900 22px Nunito,sans-serif">Area studio</h1><p>WonderNutrition · Dott.ssa Martina Rabbolini</p></div><a class="btn sec" href="index.html">Torna all'app</a></header>
 <div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -27,6 +27,9 @@ function zip(fs){const E=new TextEncoder(),P=[],C=[];let off=0;const u2=n=>[n&25
  const cs=C.reduce((n,x)=>n+x.length,0);
  return new Blob([...P,...C,new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u2(fs.length),...u2(fs.length),...u4(cs),...u4(off),0,0])],{type:"application/zip"})}
 
+const b64x=b=>{const u=new Uint8Array(b);let s="";for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(s)};
+async function encB(bytes,code){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},await key(code,salt),bytes));const o=new Uint8Array(28+ct.length);o.set(salt);o.set(iv,16);o.set(ct,28);return o}
+async function encJ(obj,code){const o=await encB(new TextEncoder().encode(JSON.stringify(obj)),code);return{s:b64x(o.slice(0,16)),i:b64x(o.slice(16,28)),c:b64x(o.slice(28))}}
 function dl(name,obj){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:"application/json"}));a.download=name;a.click()}
 let D;try{D=JSON.parse(localStorage.getItem("wn_admin"))}catch(e){}
 D=D||{patients:[],challenge:{month:CM,title:"",tasks:[],target:20},notices:[]};let edit=-1;
@@ -35,7 +38,7 @@ const SY=()=>{try{return JSON.parse(localStorage.getItem("wn_sync"))||{}}catch(e
 function sstat(t,err){const b=$("syncbox");b.hidden=false;b.textContent=t;b.setAttribute("role",err?"alert":"status");b.classList.toggle("err",!!err)}
 const gh=(m,path,body,raw)=>{const s=SY();return fetch("https://api.github.com/repos/"+s.repo+"/contents/"+path,{method:m,headers:{Authorization:"Bearer "+s.token,Accept:raw?"application/vnd.github.raw+json":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},body:body?JSON.stringify(body):undefined})};
 async function put(path,bytes,msg){let sha;const g=await gh("GET",path);if(g.ok)sha=(await g.json()).sha;else if(g.status!=404)throw new Error("GitHub errore "+g.status+" leggendo "+path);
- const r=await gh("PUT",path,{message:msg,content:b64(bytes),sha});if(!r.ok){let m="";try{m=(await r.json()).message}catch(e){}throw new Error("GitHub errore "+r.status+" scrivendo "+path+". "+m)}}
+ const r=await gh("PUT",path,{message:msg,content:b64x(bytes),sha});if(!r.ok){let m="";try{m=(await r.json()).message}catch(e){}throw new Error("GitHub errore "+r.status+" scrivendo "+path+". "+m)}}
 async function del(path){const g=await gh("GET",path);if(g.ok)await gh("DELETE",path,{message:"Rimozione file",sha:(await g.json()).sha})}
 let pubBusy=false,pubAgain=false,pubTimer;
 function schedule(){const s=SY();if(!s.repo||!s.token||!s.pass)return;clearTimeout(pubTimer);pubTimer=setTimeout(()=>publish(),1500);sstat("Modifiche in attesa di pubblicazione.")}
@@ -43,11 +46,11 @@ async function publish(manual){const s=SY();if(!s.repo||!s.token||!s.pass){if(ma
  if(pubBusy){pubAgain=true;return}pubBusy=true;
  try{sstat("Pubblicazione su GitHub in corso.");const plans=[],pdfs={};
   for(const x of D.patients){const pl={name:x.name,plan:x.plan,notes:x.notes,updated:x.updated};
-   if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;pdfs[x.code]=b64(b);if(x.pdfDirty){await put(x.pdfFile,await encryptBytes(b,x.code),"PDF paziente");x.pdfDirty=false}}}
-   plans.push(await encrypt(pl,x.code))}
+   if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;pdfs[x.code]=b64x(b);if(x.pdfDirty){await put(x.pdfFile,await encB(b,x.code),"PDF paziente");x.pdfDirty=false}}}
+   plans.push(await encJ(pl,x.code))}
   const c=D.challenge,te=t=>new TextEncoder().encode(t);
   await put("data.json",te(JSON.stringify({challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans})),"Aggiornamento dati");
-  await put("archivio.json",te(JSON.stringify(await encrypt({D:{...D,trash:[]},pdfs},s.pass))),"Archivio cifrato");
+  await put("archivio.json",te(JSON.stringify(await encJ({D:{...D,trash:[]},pdfs},s.pass))),"Archivio cifrato");
   for(const t of D.trash||[])await del(t);D.trash=[];save(true);
   sstat("Pubblicato e archiviato su GitHub alle "+new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})+". I pazienti vedranno le novità entro un paio di minuti.")
  }catch(e){sstat("Pubblicazione non riuscita: "+e.message,true)}
@@ -136,22 +139,22 @@ $("rest").onclick=async()=>{const s=SY();if(!s.repo){say("Prima salva il collega
  catch(x){say("Ripristino non riuscito: "+x.message,{err:true,focus:true})}};
 $("exp").onclick=async()=>{say("Preparazione del pacchetto in corso.");const plans=[],files=[];
  for(const x of D.patients){const pl={name:x.name,plan:x.plan,notes:x.notes,updated:x.updated};
-  if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;files.push({name:x.pdfFile,data:await encryptBytes(b,x.code)})}}
-  plans.push(await encrypt(pl,x.code))}
+  if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;files.push({name:x.pdfFile,data:await encB(b,x.code)})}}
+  plans.push(await encJ(pl,x.code))}
  const c=D.challenge,data={challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans};
  files.unshift({name:"data.json",data:new TextEncoder().encode(JSON.stringify(data))});
  const u=document.createElement("a");u.href=URL.createObjectURL(zip(files));u.download="wondernutrition-pubblicazione.zip";u.click();
  say("Pacchetto scaricato: wondernutrition-pubblicazione.zip. Decomprimilo e carica su GitHub data.json e la cartella p.",{focus:true})};
-$("bk").onclick=async()=>{const pdfs={};for(const x of D.patients){const b=x.pdfFile&&await idbGet(x.code);if(b)pdfs[x.code]=b64(b)}dl("backup-privato.json",{...D,pdfs});say("Backup privato scaricato. Conservalo in un posto sicuro.",{focus:true})};
+$("bk").onclick=async()=>{const pdfs={};for(const x of D.patients){const b=x.pdfFile&&await idbGet(x.code);if(b)pdfs[x.code]=b64x(b)}dl("backup-privato.json",{...D,pdfs});say("Backup privato scaricato. Conservalo in un posto sicuro.",{focus:true})};
 $("imp").onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!Array.isArray(j.patients))throw 0;for(const k in j.pdfs||{})await idbSet(k,ub64(j.pdfs[k]));delete j.pdfs;D=j;edit=-1;save();render();say("Backup importato.",{focus:true})}catch(x){say("Il file non è un backup valido.",{err:true,focus:true})}}}
 async function sha(t){return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t))),b=>b.toString(16).padStart(2,"0")).join("")}
 function problems(){const p=[];
  if(!(window.crypto&&crypto.subtle))p.push("Questo browser non consente la verifica sicura: apri la pagina dall'indirizzo https di GitHub Pages, non da un file salvato.");
  if(typeof challengeFor!=="function")p.push("Nel repository manca il file challenges.js: caricalo accanto ad admin.html.");
- if(typeof encryptBytes!=="function")p.push("Il file crypto.js nel repository non è aggiornato: sostituiscilo con l'ultima versione.");return p}
+return p}
 window.addEventListener("error",e=>{try{say("Errore nella pagina: "+e.message+". "+problems().join(" "),{err:true})}catch(x){}});
 function lock(err){$("app").innerHTML=`${problems().length?`<div class="card msgbox err" role="alert">${problems().map(esc).join(" ")}</div>`:""}<section class="card" aria-labelledby="h-lock"><h2 id="h-lock">Accesso all'area studio</h2><form id="lf"><label for="ac">Codice amministratore</label><input id="ac" type="password" inputmode="numeric" autocomplete="off" aria-describedby="lerr"><p id="lerr" role="${err?"alert":"status"}">${err?"Codice errato. Riprova.":""}</p><button type="submit">Entra</button></form></section>`;
- $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";try{if(await sha("wn-admin:"+$("ac").value.trim())===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)}catch(x){$("lerr").setAttribute("role","alert");$("lerr").textContent="Errore: "+(x&&x.message||x)+". "+problems().join(" ")}};
+ $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";try{if(await sha("wn-admin:"+$("ac").value.replace(/\s/g,""))===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)}catch(x){$("lerr").setAttribute("role","alert");$("lerr").textContent="Errore: "+(x&&x.message||x)+". "+problems().join(" ")}};
  $("ac").focus()}
 let ok=false;try{ok=sessionStorage.getItem("wn_ok")==="1"}catch(e){}
 ok?render():lock();

@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>WonderNutrition</title><link rel="stylesheet" href="style.css"><link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0a7a95"><meta name="apple-mobile-web-app-title" content="WonderNutrition"></head><body>
-<header><div class="logo"><img src="icons/logo.png" alt="" width="30" height="36"><div><h1>WonderNutrition</h1><p>Biologa Nutrizionista · be your better</p></div></div><div class="stats" id="stats"></div></header>
+<title>WonderNutrition</title><link rel="stylesheet" href="style.css"><link rel="icon" type="image/png" sizes="32x32" href="wn-favicon-32.png"><link rel="apple-touch-icon" href="wn-apple-touch.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0a7a95"><meta name="apple-mobile-web-app-title" content="WonderNutrition"></head><body>
+<header><div class="logo"><img src="wn-logo.png" alt="" width="30" height="36"><div><h1>WonderNutrition</h1><p>Biologa Nutrizionista · be your better</p></div></div><div class="stats" id="stats"></div></header>
 <main id="app" tabindex="-1" style="outline:0"></main><footer style="text-align:center;margin:0 0 100px;padding:0 14px"><a class="btn sec" href="admin.html">Area studio per la dottoressa</a></footer><nav id="nav" aria-label="Menu principale"></nav>
 <script src="crypto.js"></script><script src="challenges.js"></script><script src="wondy.js"></script>
 <script>
@@ -16,8 +16,9 @@ async function load(){try{S.data=await (await fetch("data.json?"+Date.now())).js
  if(S.code)await unlock(S.code,true);render()}
 async function unlock(code,silent){S.busy=true;S.plan=null;
  for(const e of S.data.plans){const p=await decrypt(e,code);if(p){S.plan=p;break}}
- S.pdfUrl="";if(S.plan&&S.plan.pdf){try{const r=await fetch(S.plan.pdf+"?"+Date.now());const d=await decryptBytes(new Uint8Array(await r.arrayBuffer()),code);S.pdfUrl=URL.createObjectURL(new Blob([d],{type:"application/pdf"}))}catch(e){}}
+ S.pdfUrl="";if(S.plan&&S.plan.pdf){try{const r=await fetch(S.plan.pdf+"?"+Date.now());const d=await decB(new Uint8Array(await r.arrayBuffer()),code);S.pdfUrl=URL.createObjectURL(new Blob([d],{type:"application/pdf"}))}catch(e){}}
  S.busy=false;if(S.plan){S.code=code;ls.set("wn_code",code);S.msg=""}else{S.msg=silent?"":"Ops! Questo codice non funziona. Riprova!";if(silent){S.code="";ls.del("wn_code")}}}
+async function decB(b,code){return new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv:b.slice(16,28)},await key(code,b.slice(0,16)),b.slice(28)))}
 const prog=()=>{try{return JSON.parse(ls.get("wn_prog_"+S.code)||"{}")}catch(e){return{}}};
 function streak(P){const d=new Set(P.days||[]);let n=0,t=new Date();if(!d.has(t.toISOString().slice(0,10)))t.setDate(t.getDate()-1);
  while(d.has(t.toISOString().slice(0,10))){n++;t.setDate(t.getDate()-1)}return n}
