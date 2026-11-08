@@ -1,9 +1,9 @@
 <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Area studio – WonderNutrition</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"></head><body>
+<title>Area studio – WonderNutrition</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"><link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0a7a95"><meta name="apple-mobile-web-app-title" content="WonderNutrition"></head><body>
 <a class="skip" href="#main">Vai al contenuto principale</a>
 <header><div><h1 style="font:900 22px Nunito,sans-serif">Area studio</h1><p>WonderNutrition · Dott.ssa Martina Rabbolini</p></div><a class="btn sec" href="index.html">Torna all'app</a></header>
 <div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
-<main id="main"><div id="msgbox" class="card msgbox" tabindex="-1" hidden></div><div id="app"></div></main>
+<main id="main"><div id="syncbox" class="card" role="status" aria-live="polite" hidden></div><div id="msgbox" class="card msgbox" tabindex="-1" hidden></div><div id="app"></div></main>
 <script src="crypto.js"></script><script src="challenges.js"></script>
 <script>
 const HASH="278a8c78870ff0d1947c9ab006516c57ad830021f75c2d8c043d0b832fd3ab43";
@@ -30,12 +30,33 @@ function zip(fs){const E=new TextEncoder(),P=[],C=[];let off=0;const u2=n=>[n&25
 function dl(name,obj){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:"application/json"}));a.download=name;a.click()}
 let D;try{D=JSON.parse(localStorage.getItem("wn_admin"))}catch(e){}
 D=D||{patients:[],challenge:{month:CM,title:"",tasks:[],target:20},notices:[]};let edit=-1;
-const save=()=>{try{localStorage.setItem("wn_admin",JSON.stringify(D))}catch(e){}};
+const save=q=>{try{localStorage.setItem("wn_admin",JSON.stringify(D))}catch(e){}if(!q)schedule()};
+const SY=()=>{try{return JSON.parse(localStorage.getItem("wn_sync"))||{}}catch(e){return{}}};
+function sstat(t,err){const b=$("syncbox");b.hidden=false;b.textContent=t;b.setAttribute("role",err?"alert":"status");b.classList.toggle("err",!!err)}
+const gh=(m,path,body,raw)=>{const s=SY();return fetch("https://api.github.com/repos/"+s.repo+"/contents/"+path,{method:m,headers:{Authorization:"Bearer "+s.token,Accept:raw?"application/vnd.github.raw+json":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},body:body?JSON.stringify(body):undefined})};
+async function put(path,bytes,msg){let sha;const g=await gh("GET",path);if(g.ok)sha=(await g.json()).sha;else if(g.status!=404)throw new Error("GitHub errore "+g.status+" leggendo "+path);
+ const r=await gh("PUT",path,{message:msg,content:b64(bytes),sha});if(!r.ok){let m="";try{m=(await r.json()).message}catch(e){}throw new Error("GitHub errore "+r.status+" scrivendo "+path+". "+m)}}
+async function del(path){const g=await gh("GET",path);if(g.ok)await gh("DELETE",path,{message:"Rimozione file",sha:(await g.json()).sha})}
+let pubBusy=false,pubAgain=false,pubTimer;
+function schedule(){const s=SY();if(!s.repo||!s.token||!s.pass)return;clearTimeout(pubTimer);pubTimer=setTimeout(()=>publish(),1500);sstat("Modifiche in attesa di pubblicazione.")}
+async function publish(manual){const s=SY();if(!s.repo||!s.token||!s.pass){if(manual)say("Prima salva il collegamento a GitHub.",{err:true});return}
+ if(pubBusy){pubAgain=true;return}pubBusy=true;
+ try{sstat("Pubblicazione su GitHub in corso.");const plans=[],pdfs={};
+  for(const x of D.patients){const pl={name:x.name,plan:x.plan,notes:x.notes,updated:x.updated};
+   if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;pdfs[x.code]=b64(b);if(x.pdfDirty){await put(x.pdfFile,await encryptBytes(b,x.code),"PDF paziente");x.pdfDirty=false}}}
+   plans.push(await encrypt(pl,x.code))}
+  const c=D.challenge,te=t=>new TextEncoder().encode(t);
+  await put("data.json",te(JSON.stringify({challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans})),"Aggiornamento dati");
+  await put("archivio.json",te(JSON.stringify(await encrypt({D:{...D,trash:[]},pdfs},s.pass))),"Archivio cifrato");
+  for(const t of D.trash||[])await del(t);D.trash=[];save(true);
+  sstat("Pubblicato e archiviato su GitHub alle "+new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})+". I pazienti vedranno le novità entro un paio di minuti.")
+ }catch(e){sstat("Pubblicazione non riuscita: "+e.message,true)}
+ pubBusy=false;if(pubAgain){pubAgain=false;schedule()}}
 const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x%31]).join("");
 function say(t,o={}){const m=$("msgbox"),l=$("live");m.textContent=t;m.hidden=false;m.classList.toggle("err",!!o.err);
  if(o.focus)m.focus();else{l.setAttribute("aria-live",o.err?"assertive":"polite");l.textContent="";setTimeout(()=>l.textContent=t,60)}}
 function render(f){const p=D.patients[edit],c=D.challenge,auto=(typeof challengeFor=="function"?challengeFor({challenge:null}):{title:"non disponibile (manca challenges.js)"}),ovr=c.title&&c.tasks.length&&(c.month==CM||c.month==NX);
-const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-pub","Pubblicazione e backup"]];
+const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-sync","Collegamento GitHub"],["h-pub","Pubblicazione e backup"]];
 $("app").innerHTML=`<nav class="card" aria-label="Vai a una sezione"><ul class="l secnav">${sec.map(x=>`<li><a class="btn sec" href="#${x[0]}">${x[1]}</a></li>`).join("")}</ul></nav>
 <section class="card" aria-labelledby="h-new"><h2 id="h-new" tabindex="-1">${p?"Modifica paziente: "+esc(p.name):"Nuovo paziente"}</h2>
 <form id="pform"><label for="pn">Nome e cognome (obbligatorio)</label><input id="pn" autocomplete="off" aria-required="true" value="${esc(p?.name)}">
@@ -57,8 +78,18 @@ ${D.patients.length?`<ul class="l">${D.patients.map((x,i)=>`<li class="task"><di
 <section class="card" aria-labelledby="h-not"><h2 id="h-not" tabindex="-1">Avvisi per i pazienti</h2>
 <form id="nform"><label for="nt">Testo del nuovo avviso</label><textarea id="nt" style="min-height:80px"></textarea><button type="submit">Aggiungi avviso</button></form>
 ${D.notices.length?`<ul class="l">${D.notices.map((n,i)=>`<li class="task"><div><span class="mu">${esc(n.date)}</span><br>${esc(n.text)}</div><button type="button" class="sec" data-n="${i}" aria-label="Elimina l'avviso del ${esc(n.date)}: ${esc(n.text)}">Elimina</button></li>`).join("")}</ul>`:"<p>Nessun avviso pubblicato.</p>"}</section>
+<section class="card" aria-labelledby="h-sync"><h2 id="h-sync" tabindex="-1">Collegamento a GitHub (pubblicazione automatica)</h2>
+<p>${SY().repo?"Collegamento attivo con "+esc(SY().repo)+". Ogni modifica viene pubblicata e archiviata da sola.":"Non ancora collegato. Fallo una volta sola e non dovrai più caricare file a mano."}</p>
+<form id="sform"><label for="sr">Repository (nomeutente/nomerepo)</label><input id="sr" autocomplete="off" value="${esc(SY().repo)}">
+<label for="stk">Token di accesso GitHub</label><input id="stk" type="password" autocomplete="off" value="${esc(SY().token)}">
+<label for="spw">Frase segreta dell'archivio (almeno 10 caratteri)</label><input id="spw" type="password" autocomplete="off" value="${esc(SY().pass)}">
+<button type="submit">Salva e verifica il collegamento</button></form>
+<button type="button" class="sec" id="pnow">Pubblica adesso</button><button type="button" class="sec" id="rest">Ripristina l'archivio da GitHub</button>
+<h3>Come ottenere il token (una volta sola)</h3>
+<ol><li>Su GitHub apri Settings, poi Developer settings, Personal access tokens, Fine-grained tokens, Generate new token.</li><li>In Repository access scegli Only select repositories e il repository dell'app.</li><li>In Repository permissions imposta Contents su Read and write.</li><li>Genera il token e incollalo qui sopra: resta salvato solo in questo browser.</li></ol>
+<p class="mu">Con un nuovo dispositivo collega di nuovo lo stesso repository, token e frase segreta, poi usa Ripristina. Se perdi il dispositivo, revoca il token su GitHub. Senza la frase segreta l'archivio non si può recuperare.</p></section>
 <section class="card" aria-labelledby="h-pub"><h2 id="h-pub" tabindex="-1">Pubblicazione e backup</h2>
-<ol><li>Premi "Scarica pacchetto da pubblicare".</li><li>Decomprimi il file scaricato.</li><li>Su GitHub carica il file data.json e la cartella p, sostituendo quelli esistenti.</li></ol>
+<p>Solo se non usi il collegamento automatico: scarica il pacchetto, decomprimilo e carica su GitHub il file data.json e la cartella p.</p>
 <button type="button" id="exp">Scarica pacchetto da pubblicare (zip)</button>
 <button type="button" class="sec" id="bk">Scarica backup privato</button>
 <p class="mu">Il backup privato contiene codici e piani in chiaro: non caricarlo su GitHub.</p>
@@ -70,15 +101,15 @@ $("pform").onsubmit=async e=>{e.preventDefault();const n=$("pn").value.trim(),pl
  if(!pl&&!f&&!p?.pdfFile){say("Inserisci il piano in testo oppure carica un PDF.",{err:true});$("pp").focus();return}
  if(f&&f.size>10485760){say("Il PDF è troppo grande: il massimo è 10 megabyte.",{err:true});return}
  const code=p?p.code:gen(),o=p||{code};Object.assign(o,{name:n,plan:pl,notes:$("pt").value.trim(),updated:today()});
- if(f){try{await idbSet(code,new Uint8Array(await f.arrayBuffer()));o.pdfFile=o.pdfFile||"p/"+Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,"0")).join("")+".enc"}catch(x){say("Non riesco a salvare il PDF in questo browser.",{err:true});return}}
+ if(f){try{await idbSet(code,new Uint8Array(await f.arrayBuffer()));o.pdfDirty=true;o.pdfFile=o.pdfFile||"p/"+Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,"0")).join("")+".enc"}catch(x){say("Non riesco a salvare il PDF in questo browser.",{err:true});return}}
  if(p){edit=-1;save();render();say("Modifiche salvate per "+n+". Ricordati di scaricare e caricare il pacchetto aggiornato.",{focus:true})}
  else{D.patients.push(o);save();render();say("Paziente creato: "+n+". Codice di accesso: "+code+". Lettera per lettera: "+spell(code)+".",{focus:true})}};
-$("rp")&&($("rp").onclick=async()=>{await idbSet(p.code,null);delete p.pdfFile;save();render("pn");say("PDF rimosso.")});
+$("rp")&&($("rp").onclick=async()=>{await idbSet(p.code,null);D.trash=[...(D.trash||[]),p.pdfFile];delete p.pdfFile;save();render("pn");say("PDF rimosso.")});
 $("canc")&&($("canc").onclick=()=>{edit=-1;render("pn");say("Modifica annullata.")});
 document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{const x=D.patients[+b.dataset.c];
  (navigator.clipboard?navigator.clipboard.writeText(x.code):Promise.reject()).then(()=>say("Codice di "+x.name+" copiato negli appunti.")).catch(()=>say("Copia non riuscita. Il codice di "+x.name+" è "+spell(x.code)+".",{focus:true}))});
 document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{edit=+b.dataset.e;render("pn");say("Modifica di "+D.patients[edit].name+". Cambia i campi e premi Salva le modifiche.")});
-document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const x=D.patients[+b.dataset.d];if(confirm("Eliminare "+x.name+"? L'operazione non si può annullare.")){D.patients.splice(+b.dataset.d,1);idbSet(x.code,null).catch(()=>{});edit=-1;save();render("h-list");say(x.name+" eliminato. Ricordati di pubblicare il pacchetto aggiornato.")}});
+document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const x=D.patients[+b.dataset.d];if(confirm("Eliminare "+x.name+"? L'operazione non si può annullare.")){D.patients.splice(+b.dataset.d,1);idbSet(x.code,null).catch(()=>{});if(x.pdfFile)D.trash=[...(D.trash||[]),x.pdfFile];edit=-1;save();render("h-list");say(x.name+" eliminato. Ricordati di pubblicare il pacchetto aggiornato.")}});
 $("cform").onsubmit=e=>{e.preventDefault();const t=$("ct").value.trim(),k=$("ck").value.split("\n").map(x=>x.trim()).filter(Boolean);
  if(!t||!k.length){say("Servono un titolo e almeno un'abitudine.",{err:true});$("ct").focus();return}
  D.challenge={month:$("cm").value,title:t,tasks:k,target:Math.max(1,+$("cg").value||20)};save();render();say("Sfida personalizzata salvata per "+mname(D.challenge.month)+". Pubblica il pacchetto per renderla visibile.",{focus:true})};
@@ -86,6 +117,23 @@ $("noc").onclick=()=>{D.challenge={month:CM,title:"",tasks:[],target:20};save();
 $("nform").onsubmit=e=>{e.preventDefault();const t=$("nt").value.trim();if(!t){say("Scrivi il testo dell'avviso.",{err:true});$("nt").focus();return}
  D.notices.unshift({date:today(),text:t});save();render();say("Avviso aggiunto. Pubblica il pacchetto per renderlo visibile.",{focus:true})};
 document.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{D.notices.splice(+b.dataset.n,1);save();render("h-not");say("Avviso eliminato.")});
+$("sform").onsubmit=async e=>{e.preventDefault();const repo=$("sr").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/$/,""),token=$("stk").value.trim(),pass=$("spw").value;
+ if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){say("Scrivi il repository nel formato nomeutente/nomerepo.",{err:true});$("sr").focus();return}
+ if(!token){say("Incolla il token di accesso.",{err:true});$("stk").focus();return}
+ if(pass.length<10){say("La frase segreta deve avere almeno 10 caratteri.",{err:true});$("spw").focus();return}
+ say("Verifica del collegamento in corso.");
+ try{const r=await fetch("https://api.github.com/repos/"+repo,{headers:{Authorization:"Bearer "+token,Accept:"application/vnd.github+json"}});
+  if(!r.ok)throw new Error(r.status==404||r.status==401?"repository o token non validi (errore "+r.status+")":"errore "+r.status);
+  const j=await r.json();if(j.permissions&&j.permissions.push===false)throw new Error("il token non ha il permesso di scrittura sui contenuti");
+  localStorage.setItem("wn_sync",JSON.stringify({repo,token,pass}));say("Collegamento verificato. Da ora ogni modifica viene pubblicata e archiviata da sola.",{focus:true});publish()}
+ catch(x){say("Collegamento non riuscito: "+x.message,{err:true,focus:true})}};
+$("pnow").onclick=()=>publish(true);
+$("rest").onclick=async()=>{const s=SY();if(!s.repo){say("Prima salva il collegamento.",{err:true});return}
+ if(!confirm("Ripristinare l'archivio da GitHub? I dati di questo dispositivo verranno sostituiti."))return;
+ try{say("Ripristino in corso.");const r=await gh("GET","archivio.json",null,true);if(!r.ok)throw new Error("archivio non trovato (errore "+r.status+")");
+  const o=await decrypt(await r.json(),s.pass);if(!o)throw new Error("frase segreta non corretta");
+  for(const k in o.pdfs||{})await idbSet(k,ub64(o.pdfs[k]));D=o.D;D.trash=[];edit=-1;save(true);render();say("Archivio ripristinato: "+D.patients.length+" pazienti.",{focus:true})}
+ catch(x){say("Ripristino non riuscito: "+x.message,{err:true,focus:true})}};
 $("exp").onclick=async()=>{say("Preparazione del pacchetto in corso.");const plans=[],files=[];
  for(const x of D.patients){const pl={name:x.name,plan:x.plan,notes:x.notes,updated:x.updated};
   if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;files.push({name:x.pdfFile,data:await encryptBytes(b,x.code)})}}
