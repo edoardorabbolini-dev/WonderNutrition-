@@ -59,7 +59,7 @@ const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJ
 function say(t,o={}){const m=$("msgbox"),l=$("live");m.textContent=t;m.hidden=false;m.classList.toggle("err",!!o.err);
  if(o.focus)m.focus();else{l.setAttribute("aria-live",o.err?"assertive":"polite");l.textContent="";setTimeout(()=>l.textContent=t,60)}}
 function render(f){const p=D.patients[edit],c=D.challenge,auto=(typeof challengeFor=="function"?challengeFor({challenge:null}):{title:"non disponibile (manca challenges.js)"}),ovr=c.title&&c.tasks.length&&(c.month==CM||c.month==NX);
-const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-sync","Collegamento GitHub"],["h-pub","Pubblicazione e backup"]];
+const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-req","Cambio codice"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-sync","Collegamento GitHub"],["h-pub","Pubblicazione e backup"]];
 $("app").innerHTML=`<nav class="card" aria-label="Vai a una sezione"><ul class="l secnav">${sec.map(x=>`<li><a class="btn sec" href="#${x[0]}">${x[1]}</a></li>`).join("")}</ul></nav>
 <section class="card" aria-labelledby="h-new"><h2 id="h-new" tabindex="-1">${p?"Modifica paziente: "+esc(p.name):"Nuovo paziente"}</h2>
 <form id="pform"><label for="pn">Nome e cognome (obbligatorio)</label><input id="pn" autocomplete="off" aria-required="true" value="${esc(p?.name)}">
@@ -69,7 +69,11 @@ ${p?.pdfFile?`<p>Per questo paziente è già caricato un PDF. <button type="butt
 <label for="pt">Note per il paziente (facoltative)</label><textarea id="pt" style="min-height:80px">${esc(p?.notes)}</textarea>
 <button type="submit">${p?"Salva le modifiche":"Aggiungi paziente e genera il codice"}</button>${p?`<button type="button" class="sec" id="canc">Annulla la modifica</button>`:""}</form></section>
 <section class="card" aria-labelledby="h-list"><h2 id="h-list" tabindex="-1">Elenco pazienti (${D.patients.length})</h2>
-${D.patients.length?`<ul class="l">${D.patients.map((x,i)=>`<li class="task"><div><strong>${esc(x.name)}</strong>${x.pdfFile?`<span class="sr">, con PDF</span>`:""}<br><span class="mu">Codice <code aria-hidden="true">${esc(x.code)}</code><span class="sr">${spell(x.code)}</span></span></div><div class="acts"><button type="button" class="sec" data-c="${i}" aria-label="Copia il codice di ${esc(x.name)}">Copia codice</button><button type="button" class="sec" data-e="${i}" aria-label="Modifica ${esc(x.name)}">Modifica</button><button type="button" class="sec" data-d="${i}" aria-label="Elimina ${esc(x.name)}">Elimina</button></div></li>`).join("")}</ul>`:"<p>Nessun paziente inserito.</p>"}</section>
+${D.patients.length?`<label for="qs">Cerca per nome e cognome</label><input id="qs" type="search" autocomplete="off"><ul class="l" id="plist">${D.patients.map((x,i)=>`<li class="task" data-name="${esc(x.name.toLowerCase())}"><div><strong>${esc(x.name)}</strong>${x.pdfFile?`<span class="sr">, con PDF</span>`:""}<br><span class="mu">Codice <code aria-hidden="true">${esc(x.code)}</code><span class="sr">${spell(x.code)}</span></span></div><div class="acts"><button type="button" class="sec" data-c="${i}" aria-label="Copia il codice di ${esc(x.name)}">Copia codice</button><button type="button" class="sec" data-r="${i}" aria-label="Genera un nuovo codice per ${esc(x.name)}">Nuovo codice</button><button type="button" class="sec" data-e="${i}" aria-label="Modifica ${esc(x.name)}">Modifica</button><button type="button" class="sec" data-d="${i}" aria-label="Elimina ${esc(x.name)}">Elimina</button></div></li>`).join("")}</ul>`:"<p>Nessun paziente inserito.</p>"}</section>
+<section class="card" aria-labelledby="h-req"><h2 id="h-req" tabindex="-1">Cambio codice dei pazienti</h2>
+<p>Quando un paziente cambia il proprio codice, ti manda un testo che inizia con WN1. Incollalo qui per attivare il nuovo codice.</p>
+<form id="rform"><label for="rq">Testo della richiesta</label><textarea id="rq" style="min-height:90px"></textarea><button type="submit">Applica la richiesta</button></form>
+<p class="mu">Se un paziente dimentica il codice: cercalo per nome e cognome nell'elenco pazienti e premi "Nuovo codice".</p></section>
 <section class="card" aria-labelledby="h-ch"><h2 id="h-ch" tabindex="-1">Sfida mensile</h2>
 <p>La sfida è automatica: ogni mese l'app ne propone una nuova da sola. Sfida automatica di questo mese: ${esc(auto.title)}. ${ovr?`Hai impostato una sfida personalizzata per ${mname(c.month)}: ${esc(c.title)}.`:"Nessuna sfida personalizzata impostata."}</p>
 <h3>Imposta una sfida personalizzata (facoltativo)</h3>
@@ -98,7 +102,19 @@ ${D.notices.length?`<ul class="l">${D.notices.map((n,i)=>`<li class="task"><div>
 <p class="mu">Il backup privato contiene codici e piani in chiaro: non caricarlo su GitHub.</p>
 <label for="imp">Importa un backup privato</label><input id="imp" type="file" accept=".json"></section>`;
 bind();if(f&&$(f))$(f).focus()}
+async function setCode(p,n){const b=p.pdfFile&&await idbGet(p.code);if(b){await idbSet(n,b);p.pdfDirty=true}if(p.pdfFile)await idbSet(p.code,null);p.code=n}
+let qt;
 function bind(){const p=D.patients[edit];
+$("qs")&&($("qs").oninput=()=>{clearTimeout(qt);const q=$("qs").value.trim().toLowerCase();let n=0;document.querySelectorAll("#plist li").forEach(li=>{const h=q&&!li.dataset.name.includes(q);li.hidden=!!h;if(!h)n++});qt=setTimeout(()=>say(n+(n==1?" paziente trovato":" pazienti trovati")),700)});
+document.querySelectorAll("[data-r]").forEach(b=>b.onclick=async()=>{const x=D.patients[+b.dataset.r];if(!confirm("Generare un nuovo codice per "+x.name+"? Il vecchio smetterà di funzionare."))return;
+ const n=gen();await setCode(x,n);save();render("h-list");say("Nuovo codice per "+x.name+": "+n+". Lettera per lettera: "+spell(n)+". Il vecchio codice non funzionerà più.",{focus:true})});
+$("rform").onsubmit=async e=>{e.preventDefault();const t=$("rq").value.trim();
+ if(!t.startsWith("WN1.")){say("Il testo non è valido: deve iniziare con WN1.",{err:true});$("rq").focus();return}
+ let r;try{r=JSON.parse(atob(t.slice(4).replace(/\s/g,"")))}catch(x){say("Il testo è incompleto o danneggiato.",{err:true});return}
+ for(const q of D.patients){const o=await decrypt(r,q.code);if(o&&o.n){
+  if(D.patients.some(z=>z!==q&&z.code===o.n)){say("Il nuovo codice scelto è già usato da un altro paziente: chiedi di sceglierne un altro.",{err:true,focus:true});return}
+  await setCode(q,o.n);save();render("h-req");say("Codice di "+q.name+" aggiornato. Il paziente potrà entrare con il nuovo codice entro un paio di minuti.",{focus:true});return}}
+ say("Nessun paziente corrisponde a questa richiesta: forse il codice è già stato cambiato.",{err:true,focus:true})};
 $("pform").onsubmit=async e=>{e.preventDefault();const n=$("pn").value.trim(),pl=$("pp").value.trim(),f=$("pdf").files[0];
  if(!n){say("Scrivi il nome e cognome del paziente.",{err:true});$("pn").focus();return}
  if(!pl&&!f&&!p?.pdfFile){say("Inserisci il piano in testo oppure carica un PDF.",{err:true});$("pp").focus();return}

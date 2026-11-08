@@ -13,12 +13,17 @@ const mname=m=>MESI[+m.split("-")[1]-1]+" "+m.split("-")[0];
 const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const S={tab:"plan",code:ls.get("wn_code")||"",data:null,plan:null,msg:"",busy:false,said:""};
 async function load(){try{S.data=await (await fetch("data.json?"+Date.now())).json()}catch(e){S.data={challenge:null,notices:[],plans:[]}}
- if(S.code)await unlock(S.code,true);render()}
+ if(S.code)await unlock(S.code,true);
+ const pd=ls.get("wn_pending");if(!S.plan&&pd)await unlock(pd,true);render()}
 async function unlock(code,silent){S.busy=true;S.plan=null;
  for(const e of S.data.plans){const p=await decrypt(e,code);if(p){S.plan=p;break}}
  S.pdfUrl="";if(S.plan&&S.plan.pdf){try{const r=await fetch(S.plan.pdf+"?"+Date.now());const d=await decB(new Uint8Array(await r.arrayBuffer()),code);S.pdfUrl=URL.createObjectURL(new Blob([d],{type:"application/pdf"}))}catch(e){}}
- S.busy=false;if(S.plan){S.code=code;ls.set("wn_code",code);S.msg=""}else{S.msg=silent?"":"Ops! Questo codice non funziona. Riprova!";if(silent){S.code="";ls.del("wn_code")}}}
+ S.busy=false;if(S.plan){const pv=ls.get("wn_prev");if(pv&&pv!==code&&!ls.get("wn_prog_"+code)){const o=ls.get("wn_prog_"+pv);if(o)ls.set("wn_prog_"+code,o)}ls.del("wn_prev");if(ls.get("wn_pending")===code)ls.del("wn_pending");S.code=code;ls.set("wn_code",code);S.msg=""}
+ else{S.msg=silent?"":"Ops! Questo codice non funziona. Riprova!";if(silent){if(code===ls.get("wn_code")){ls.set("wn_prev",code);ls.del("wn_code")}S.code=""}}}
 async function decB(b,code){return new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv:b.slice(16,28)},await key(code,b.slice(0,16)),b.slice(28)))}
+const b64x=b=>{const u=new Uint8Array(b);let s="";for(let k=0;k<u.length;k+=8192)s+=String.fromCharCode.apply(null,u.subarray(k,k+8192));return btoa(s)};
+async function encJ(obj,code){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
+ const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},await key(code,salt),new TextEncoder().encode(JSON.stringify(obj))));return{s:b64x(salt),i:b64x(iv),c:b64x(ct)}}
 const prog=()=>{try{return JSON.parse(ls.get("wn_prog_"+S.code)||"{}")}catch(e){return{}}};
 function streak(P){const d=new Set(P.days||[]);let n=0,t=new Date();if(!d.has(t.toISOString().slice(0,10)))t.setDate(t.getDate()-1);
  while(d.has(t.toISOString().slice(0,10))){n++;t.setDate(t.getDate()-1)}return n}
@@ -38,7 +43,10 @@ const loginBox=()=>hero(S.busy?"Controllo il codice… 🐾":esc(S.msg)||"Woof! 
 function vPlan(){if(!S.plan)return loginBox();const p=S.plan;
  return hero(`Ciao <b>${esc(p.name)}</b>! 🎉 Ecco il tuo piano su misura. Insieme ce la faremo!`,"happy")+
  `<div class="card"><h2>🥗 Il tuo piano</h2><div class="mu">Aggiornato il ${esc(p.updated||"")}</div>${S.pdfUrl?`<p><a class="btn" href="${S.pdfUrl}" target="_blank" rel="noopener">📄 Apri il piano (PDF)</a><a class="btn sec" href="${S.pdfUrl}" download="piano-alimentare.pdf">Scarica</a></p>`:p.pdf?'<p class="mu">PDF non disponibile, riprova più tardi.</p>':""}<div class="plan" style="margin-top:8px">${esc(p.plan||"")}</div>${p.notes?`<h3>Note della dottoressa</h3><div class="plan">${esc(p.notes)}</div>`:""}</div>
- <button class="sec" id="logout">Esci</button><a class="btn blue" href="${SITE}" target="_blank" rel="noopener">Il nostro sito</a>`}
+ <div class="card"><h2>🔑 Cambia il tuo codice</h2><p class="mu">Scegli un nuovo codice di almeno 8 caratteri, con lettere e numeri. La dottoressa lo attiverà dopo aver ricevuto la tua richiesta: nel frattempo continua a usare il codice attuale.</p>
+<form id="cf"><label for="nc">Nuovo codice</label><input id="nc" type="password" autocomplete="new-password" spellcheck="false"><label for="nc2">Ripeti il nuovo codice</label><input id="nc2" type="password" autocomplete="new-password" spellcheck="false"><button type="submit">Prepara la richiesta</button></form>
+${S.msgc?`<p role="alert">${esc(S.msgc)}</p>`:""}${S.req?`<div role="status"><p>Richiesta pronta. Mandala alla dottoressa con WhatsApp o e-mail. Il testo è cifrato: solo voi due potete leggerlo.</p><label for="rqt">Testo della richiesta</label><textarea id="rqt" readonly style="min-height:90px">${esc(S.req)}</textarea><button type="button" id="rqshare">Condividi</button><button type="button" class="sec" id="rqcopy">Copia</button></div>`:""}</div>
+<button class="sec" id="logout">Esci</button><a class="btn blue" href="${SITE}" target="_blank" rel="noopener">Il nostro sito</a>`}
 function vSfida(){const ch=challengeFor(S.data);
  if(!ch)return hero("Sto preparando una nuova sfida per te… torna a trovarmi presto! 🐕","")+`<div class="card"><h2>🏆 Sfida del mese</h2><p class="mu">Nessuna sfida attiva.</p></div>`;
  if(!S.plan)return loginBox();
@@ -57,7 +65,13 @@ const vAvvisi=()=>{const n=(S.data&&S.data.notices)||[];return hero(n.length?"Ci
 function bind(){const $=i=>document.getElementById(i);
  document.querySelectorAll(".bar i[data-w]").forEach(e=>setTimeout(()=>e.style.width=e.dataset.w+"%",80));
  $("lf")&&($("lf").onsubmit=async e=>{e.preventDefault();const c=$("code").value.trim().toUpperCase();if(!c)return;S.msg="";S.busy=true;render();await unlock(c);if(S.plan)confetti();render(true)});
- $("logout")&&($("logout").onclick=()=>{ls.del("wn_code");S.code="";S.plan=null;render()});
+ $("cf")&&($("cf").onsubmit=async e=>{e.preventDefault();const a=$("nc").value.trim().toUpperCase(),b=$("nc2").value.trim().toUpperCase();S.msgc="";S.req="";
+  if(a!==b)S.msgc="I due codici non coincidono.";else if(a.length<8||!/[A-Z]/.test(a)||!/[0-9]/.test(a))S.msgc="Il codice deve avere almeno 8 caratteri, con lettere e numeri.";else if(a===S.code)S.msgc="Il nuovo codice è uguale a quello attuale.";
+  else{S.req="WN1."+btoa(JSON.stringify(await encJ({n:a,t:today()},S.code)));ls.set("wn_pending",a)}
+  render();const t=document.getElementById(S.req?"rqt":"nc");t&&t.focus()});
+ $("rqshare")&&($("rqshare").onclick=()=>{const d={title:"Richiesta cambio codice WonderNutrition",text:S.req};(navigator.share?navigator.share(d):Promise.reject()).catch(()=>navigator.clipboard.writeText(S.req).then(()=>{S.msgc="Testo copiato: incollalo in un messaggio alla dottoressa.";render()}).catch(()=>{}))});
+ $("rqcopy")&&($("rqcopy").onclick=()=>navigator.clipboard.writeText(S.req).then(()=>{S.msgc="Testo copiato: incollalo in un messaggio alla dottoressa.";render()}).catch(()=>{}));
+ $("logout")&&($("logout").onclick=()=>{ls.del("wn_code");S.code="";S.plan=null;S.req="";S.msgc="";render()});
  app.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{const ch=challengeFor(S.data),i=+b.dataset.done;let P=prog();
   if(P.month!=ch.month)P={...P,month:ch.month,counts:{},last:{}};P.counts=P.counts||{};P.last=P.last||{};
   P.counts[i]=(P.counts[i]||0)+1;P.last[i]=today();P.xp=(P.xp||0)+10;P.days=[...new Set([...(P.days||[]),today()])];

@@ -45,3 +45,5 @@ label{display:block;font-weight:900;margin-top:12px}
 .msgbox{border-width:3px}.msgbox.err{border-color:#b00020}
 a{color:var(--bl);font-weight:900}a.btn{color:#fff}a.btn.sec{color:var(--bl)}
 header .btn{margin:0}
+
+[hidden]{display:none!important}
