@@ -1,0 +1,4 @@
+{
+  "functions": { "api/notifiche.js": { "maxDuration": 60 } },
+  "crons": [{ "path": "/api/notifiche", "schedule": "0 7 1 * *" }]
+}

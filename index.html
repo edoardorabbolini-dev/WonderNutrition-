@@ -43,7 +43,7 @@ const loginBox=()=>hero(S.busy?"Controllo il codice… 🐾":esc(S.msg)||"Woof! 
 function vPlan(){if(!S.plan)return loginBox();const p=S.plan;
  return hero(`Ciao <b>${esc(p.name)}</b>! 🎉 Ecco il tuo piano su misura. Insieme ce la faremo!`,"happy")+
  `<div class="card"><h2>🥗 Il tuo piano</h2><div class="mu">Aggiornato il ${esc(p.updated||"")}</div>${S.pdfUrl?`<p><a class="btn" href="${S.pdfUrl}" target="_blank" rel="noopener">📄 Apri il piano (PDF)</a><a class="btn sec" href="${S.pdfUrl}" download="piano-alimentare.pdf">Scarica</a></p>`:p.pdf?'<p class="mu">PDF non disponibile, riprova più tardi.</p>':""}<div class="plan" style="margin-top:8px">${esc(p.plan||"")}</div>${p.notes?`<h3>Note della dottoressa</h3><div class="plan">${esc(p.notes)}</div>`:""}</div>
- <div class="card"><h2>🔑 Cambia il tuo codice</h2><p class="mu">Scegli un nuovo codice di almeno 8 caratteri, con lettere e numeri. La dottoressa lo attiverà dopo aver ricevuto la tua richiesta: nel frattempo continua a usare il codice attuale.</p>
+ <div class="card"><h2>🔑 Cambia il tuo codice</h2><p class="mu">Scegli un nuovo codice di almeno 8 caratteri, con lettere e numeri. ${S.data&&S.data.api?"Il cambio è automatico: dopo averlo fatto entra con il nuovo codice.":"La dottoressa lo attiverà dopo aver ricevuto la tua richiesta: nel frattempo continua a usare il codice attuale."}</p>
 <form id="cf"><label for="nc">Nuovo codice</label><input id="nc" type="password" autocomplete="new-password" spellcheck="false"><label for="nc2">Ripeti il nuovo codice</label><input id="nc2" type="password" autocomplete="new-password" spellcheck="false"><button type="submit">Prepara la richiesta</button></form>
 ${S.msgc?`<p role="alert">${esc(S.msgc)}</p>`:""}${S.req?`<div role="status"><p>Richiesta pronta. Mandala alla dottoressa con WhatsApp o e-mail. Il testo è cifrato: solo voi due potete leggerlo.</p><label for="rqt">Testo della richiesta</label><textarea id="rqt" readonly style="min-height:90px">${esc(S.req)}</textarea><button type="button" id="rqshare">Condividi</button><button type="button" class="sec" id="rqcopy">Copia</button></div>`:""}</div>
 <button class="sec" id="logout">Esci</button><a class="btn blue" href="${SITE}" target="_blank" rel="noopener">Il nostro sito</a>`}
@@ -60,17 +60,36 @@ function vSfida(){const ch=challengeFor(S.data);
 const vPrenota=()=>hero("Vuoi vedere la dottoressa? Prenota qui! Io faccio la guardia alla sala d'attesa 🐶","happy")+
  `<div class="card"><h2>📅 Prenota una visita</h2><p class="mu">Si apre l'agenda dello studio: servono nome, cognome, e-mail e telefono.</p><a class="btn" href="${BOOK}" target="_blank" rel="noopener">Apri l'agenda</a></div>
  <div class="card"><h2>⏰ Promemoria</h2><p class="mu">Hai già un appuntamento? Ti avviso io il giorno prima!</p><label for="ad">Data della visita</label><input type="date" id="ad"><label for="at">Ora della visita</label><input type="time" id="at" value="10:00"><button class="blue btn" id="ics" style="border:0;border-bottom:5px solid var(--bld)">Scarica promemoria</button><p class="mu">${esc(S.msg)}</p></div>`;
+const pushCard=()=>{const P=S.data&&S.data.push;if(!P||!P.key||!S.plan)return"";const on=typeof Notification!=="undefined"&&Notification.permission==="granted"&&ls.get("wn_push");
+ return `<div class="card"><h2>🔔 Notifiche sul telefono</h2><p class="mu">Ricevi un avviso, come su WhatsApp, quando la dottoressa ti manda un documento o un avviso.</p>${on?"<p>✓ Notifiche attive su questo dispositivo.</p>":""}<button type="button" id="pon">${on?"Riattiva le notifiche":"Attiva le notifiche"}</button>${S.pmsg?`<p role="status">${esc(S.pmsg)}</p>`:""}</div>`};
 const vAvvisi=()=>{const n=(S.data&&S.data.notices)||[];return hero(n.length?"Ci sono novità dallo studio! 📣":"Tutto tranquillo, nessuna novità. Posso farmi un pisolino? 😴","")+
- `<div class="card"><h2>🔔 Avvisi</h2>${n.length?n.map(x=>`<div class="notice"><div class="mu">${esc(x.date)}</div>${esc(x.text)}</div>`).join(""):'<p class="mu">Nessun avviso.</p>'}</div>`};
+ `<div class="card"><h2>🔔 Avvisi</h2>${n.length?n.map(x=>`<div class="notice"><div class="mu">${esc(x.date)}</div>${esc(x.text)}</div>`).join(""):'<p class="mu">Nessun avviso.</p>'}</div>`+pushCard()};
 function bind(){const $=i=>document.getElementById(i);
  document.querySelectorAll(".bar i[data-w]").forEach(e=>setTimeout(()=>e.style.width=e.dataset.w+"%",80));
  $("lf")&&($("lf").onsubmit=async e=>{e.preventDefault();const c=$("code").value.trim().toUpperCase();if(!c)return;S.msg="";S.busy=true;render();await unlock(c);if(S.plan)confetti();render(true)});
  $("cf")&&($("cf").onsubmit=async e=>{e.preventDefault();const a=$("nc").value.trim().toUpperCase(),b=$("nc2").value.trim().toUpperCase();S.msgc="";S.req="";
   if(a!==b)S.msgc="I due codici non coincidono.";else if(a.length<8||!/[A-Z]/.test(a)||!/[0-9]/.test(a))S.msgc="Il codice deve avere almeno 8 caratteri, con lettere e numeri.";else if(a===S.code)S.msgc="Il nuovo codice è uguale a quello attuale.";
+  else if(S.data&&S.data.api){S.msgc="Cambio in corso…";render();
+   try{const r=await fetch(S.data.api,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({old:S.code,new:a})}),j=await r.json();
+    if(!r.ok||!j.ok)throw new Error(j.error||"Non è stato possibile cambiare il codice.");
+    ls.set("wn_pending",a);S.msgc="Fatto! Il tuo nuovo codice è attivo. Da ora entra con il nuovo codice: l'app può impiegare un paio di minuti ad aggiornarsi, nel frattempo continua a funzionare."}
+   catch(x){S.msgc=(x&&x.message)||"Errore di collegamento, riprova."}}
   else{S.req="WN1."+btoa(JSON.stringify(await encJ({n:a,t:today()},S.code)));ls.set("wn_pending",a)}
   render();const t=document.getElementById(S.req?"rqt":"nc");t&&t.focus()});
  $("rqshare")&&($("rqshare").onclick=()=>{const d={title:"Richiesta cambio codice WonderNutrition",text:S.req};(navigator.share?navigator.share(d):Promise.reject()).catch(()=>navigator.clipboard.writeText(S.req).then(()=>{S.msgc="Testo copiato: incollalo in un messaggio alla dottoressa.";render()}).catch(()=>{}))});
  $("rqcopy")&&($("rqcopy").onclick=()=>navigator.clipboard.writeText(S.req).then(()=>{S.msgc="Testo copiato: incollalo in un messaggio alla dottoressa.";render()}).catch(()=>{}));
+ $("pon")&&($("pon").onclick=async()=>{const P=S.data.push;
+  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1),std=window.navigator.standalone||matchMedia("(display-mode: standalone)").matches;
+  if(ios&&!std){S.pmsg="Su iPhone e iPad le notifiche funzionano solo se l'app è sulla schermata Home: tocca Condividi, poi Aggiungi a Home, apri l'app da lì e riprova.";render();return}
+  if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){S.pmsg="Questo browser non supporta le notifiche.";render();return}
+  try{if(await Notification.requestPermission()!=="granted"){S.pmsg="Permesso negato: puoi riattivarlo dalle impostazioni del telefono.";render();return}
+   const reg=await navigator.serviceWorker.register("sw.js");await navigator.serviceWorker.ready;
+   const k=Uint8Array.from(atob(P.key.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
+   let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:k});
+   const r=await fetch(P.url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({azione:"iscrivi",code:S.code,sub:sub.toJSON()})}),j=await r.json();
+   if(!r.ok||!j.ok)throw new Error(j.error||"Errore");ls.set("wn_push","1");S.pmsg="Notifiche attivate! Riceverai un avviso quando arrivano novità."}
+  catch(x){S.pmsg="Non è stato possibile attivare le notifiche: "+((x&&x.message)||"errore")}
+  render()});
  $("logout")&&($("logout").onclick=()=>{ls.del("wn_code");S.code="";S.plan=null;S.req="";S.msgc="";render()});
  app.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{const ch=challengeFor(S.data),i=+b.dataset.done;let P=prog();
   if(P.month!=ch.month)P={...P,month:ch.month,counts:{},last:{}};P.counts=P.counts||{};P.last=P.last||{};

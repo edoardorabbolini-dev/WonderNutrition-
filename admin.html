@@ -31,8 +31,9 @@ const b64x=b=>{const u=new Uint8Array(b);let s="";for(let i=0;i<u.length;i+=8192
 async function encB(bytes,code){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},await key(code,salt),bytes));const o=new Uint8Array(28+ct.length);o.set(salt);o.set(iv,16);o.set(ct,28);return o}
 async function encJ(obj,code){const o=await encB(new TextEncoder().encode(JSON.stringify(obj)),code);return{s:b64x(o.slice(0,16)),i:b64x(o.slice(16,28)),c:b64x(o.slice(28))}}
 function dl(name,obj){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:"application/json"}));a.download=name;a.click()}
+const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x%31]).join("");
 let D;try{D=JSON.parse(localStorage.getItem("wn_admin"))}catch(e){}
-D=D||{patients:[],challenge:{month:CM,title:"",tasks:[],target:20},notices:[]};let edit=-1;
+D=D||{patients:[],challenge:{month:CM,title:"",tasks:[],target:20},notices:[]};let edit=-1;D.patients.forEach(x=>{if(!x.id)x.id=gen()});
 const save=q=>{try{localStorage.setItem("wn_admin",JSON.stringify(D))}catch(e){}if(!q)schedule()};
 const SY=()=>{try{return JSON.parse(localStorage.getItem("wn_sync"))||{}}catch(e){return{}}};
 function sstat(t,err){const b=$("syncbox");b.hidden=false;b.textContent=t;b.setAttribute("role",err?"alert":"status");b.classList.toggle("err",!!err)}
@@ -42,24 +43,30 @@ async function put(path,bytes,msg){let sha;const g=await gh("GET",path);if(g.ok)
 async function del(path){const g=await gh("GET",path);if(g.ok)await gh("DELETE",path,{message:"Rimozione file",sha:(await g.json()).sha})}
 let pubBusy=false,pubAgain=false,pubTimer;
 function schedule(){const s=SY();if(!s.repo||!s.token||!s.pass)return;clearTimeout(pubTimer);pubTimer=setTimeout(()=>publish(),1500);sstat("Modifiche in attesa di pubblicazione.")}
+async function pullRemote(){const s=SY();if(!s.repo||!s.token||!s.pass)return false;
+ try{const r=await gh("GET","archivio.json",null,true);if(!r.ok)return false;const o=await decrypt(await r.json(),s.pass);
+  if(!o||!o.D||(o.D.rev||0)<=(D.rev||0))return false;let ch=false;
+  for(const rp of o.D.patients){const lp=D.patients.find(x=>rp.id?x.id===rp.id:x.name===rp.name);
+   if(lp&&lp.code!==rp.code&&lp.code===(lp.sc||lp.code)){await setCode(lp,rp.code);lp.sc=rp.code;lp.pdfDirty=false;ch=true}}
+  D.rev=o.D.rev;save(true);return ch}catch(e){return false}}
+async function syncIn(){if(await pullRemote()){render();say("Aggiornati i codici cambiati dai pazienti.")}}
 async function publish(manual){const s=SY();if(!s.repo||!s.token||!s.pass){if(manual)say("Prima salva il collegamento a GitHub.",{err:true});return}
  if(pubBusy){pubAgain=true;return}pubBusy=true;
- try{sstat("Pubblicazione su GitHub in corso.");const plans=[],pdfs={};
+ try{sstat("Pubblicazione su GitHub in corso.");if(await pullRemote())render();const plans=[],pdfs={};
   for(const x of D.patients){const pl={name:x.name,plan:x.plan,notes:x.notes,updated:x.updated};
    if(x.pdfFile){const b=await idbGet(x.code);if(b){pl.pdf=x.pdfFile;pdfs[x.code]=b64x(b);if(x.pdfDirty){await put(x.pdfFile,await encB(b,x.code),"PDF paziente");x.pdfDirty=false}}}
    plans.push(await encJ(pl,x.code))}
   const c=D.challenge,te=t=>new TextEncoder().encode(t);
-  await put("data.json",te(JSON.stringify({challenge:c.title&&c.tasks.length?c:null,notices:D.notices,plans})),"Aggiornamento dati");
+  await put("data.json",te(JSON.stringify({challenge:c.title&&c.tasks.length?c:null,notices:D.notices,api:s.api||null,push:(s.vapid&&s.api)?{key:s.vapid,url:s.api.replace(/cambio-codice\/?$/,"notifiche")}:null,plans})),"Aggiornamento dati");
   await put("archivio.json",te(JSON.stringify(await encJ({D:{...D,trash:[]},pdfs},s.pass))),"Archivio cifrato");
-  for(const t of D.trash||[])await del(t);D.trash=[];save(true);
-  sstat("Pubblicato e archiviato su GitHub alle "+new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})+". I pazienti vedranno le novità entro un paio di minuti.")
+  for(const t of D.trash||[])await del(t);D.trash=[];D.patients.forEach(x=>x.sc=x.code);save(true);
+  sstat("Pubblicato e archiviato su GitHub alle "+new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})+". I pazienti vedranno le novità entro un paio di minuti."+(flushNotify(s)?" Le notifiche ai pazienti partono tra circa un minuto.":""))
  }catch(e){sstat("Pubblicazione non riuscita: "+e.message,true)}
  pubBusy=false;if(pubAgain){pubAgain=false;schedule()}}
-const gen=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x%31]).join("");
 function say(t,o={}){const m=$("msgbox"),l=$("live");m.textContent=t;m.hidden=false;m.classList.toggle("err",!!o.err);
  if(o.focus)m.focus();else{l.setAttribute("aria-live",o.err?"assertive":"polite");l.textContent="";setTimeout(()=>l.textContent=t,60)}}
 function render(f){const p=D.patients[edit],c=D.challenge,auto=(typeof challengeFor=="function"?challengeFor({challenge:null}):{title:"non disponibile (manca challenges.js)"}),ovr=c.title&&c.tasks.length&&(c.month==CM||c.month==NX);
-const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-req","Cambio codice"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-sync","Collegamento GitHub"],["h-pub","Pubblicazione e backup"]];
+const sec=[["h-new","Nuovo paziente"],["h-list","Elenco pazienti"],["h-req","Cambio codice"],["h-ch","Sfida mensile"],["h-not","Avvisi"],["h-push","Notifiche"],["h-sync","Collegamento GitHub"],["h-pub","Pubblicazione e backup"]];
 $("app").innerHTML=`<nav class="card" aria-label="Vai a una sezione"><ul class="l secnav">${sec.map(x=>`<li><a class="btn sec" href="#${x[0]}">${x[1]}</a></li>`).join("")}</ul></nav>
 <section class="card" aria-labelledby="h-new"><h2 id="h-new" tabindex="-1">${p?"Modifica paziente: "+esc(p.name):"Nuovo paziente"}</h2>
 <form id="pform"><label for="pn">Nome e cognome (obbligatorio)</label><input id="pn" autocomplete="off" aria-required="true" value="${esc(p?.name)}">
@@ -85,12 +92,16 @@ ${D.patients.length?`<label for="qs">Cerca per nome e cognome</label><input id="
 <section class="card" aria-labelledby="h-not"><h2 id="h-not" tabindex="-1">Avvisi per i pazienti</h2>
 <form id="nform"><label for="nt">Testo del nuovo avviso</label><textarea id="nt" style="min-height:80px"></textarea><button type="submit">Aggiungi avviso</button></form>
 ${D.notices.length?`<ul class="l">${D.notices.map((n,i)=>`<li class="task"><div><span class="mu">${esc(n.date)}</span><br>${esc(n.text)}</div><button type="button" class="sec" data-n="${i}" aria-label="Elimina l'avviso del ${esc(n.date)}: ${esc(n.text)}">Elimina</button></li>`).join("")}</ul>`:"<p>Nessun avviso pubblicato.</p>"}</section>
+<section class="card" aria-labelledby="h-push"><h2 id="h-push" tabindex="-1">Notifiche ai pazienti</h2>
+<p>${SY().vapid?"Notifiche configurate. Chiave pubblica: "+esc(SY().vapid.slice(0,12))+"…":"Notifiche non ancora configurate."} I pazienti ricevono una notifica sul telefono quando pubblichi un avviso, aggiorni il loro piano o inizia una nuova sfida del mese.</p>
+<button type="button" class="sec" id="gvapid">Genera le chiavi per le notifiche</button>
+${KEYS?`<div role="status"><label for="kpub">Chiave pubblica (VAPID_PUBLIC)</label><textarea id="kpub" readonly style="min-height:70px">${esc(KEYS.pub)}</textarea><label for="kpriv">Chiave privata (VAPID_PRIVATE)</label><textarea id="kpriv" readonly style="min-height:70px">${esc(KEYS.priv)}</textarea><p class="mu">Copia le due chiavi su Vercel (Settings, Environment Variables) con questi nomi, poi fai Redeploy. La chiave privata non verrà più mostrata: non condividerla.</p></div>`:""}</section>
 <section class="card" aria-labelledby="h-sync"><h2 id="h-sync" tabindex="-1">Collegamento a GitHub (pubblicazione automatica)</h2>
 <p>${SY().repo?"Collegamento attivo con "+esc(SY().repo)+". Ogni modifica viene pubblicata e archiviata da sola.":"Non ancora collegato. Fallo una volta sola e non dovrai più caricare file a mano."}</p>
 <form id="sform"><label for="sr">Repository (nomeutente/nomerepo)</label><input id="sr" autocomplete="off" value="${esc(SY().repo)}">
 <label for="stk">Token di accesso GitHub</label><input id="stk" type="password" autocomplete="off" value="${esc(SY().token)}">
 <label for="spw">Frase segreta dell'archivio (almeno 10 caratteri)</label><input id="spw" type="password" autocomplete="off" value="${esc(SY().pass)}">
-<button type="submit">Salva e verifica il collegamento</button></form>
+<label for="sapi">Indirizzo del servizio di cambio codice automatico (facoltativo)</label><input id="sapi" autocomplete="off" placeholder="https://…vercel.app/api/cambio-codice" value="${esc(SY().api)}"><button type="submit">Salva e verifica il collegamento</button></form>
 <button type="button" class="sec" id="pnow">Pubblica adesso</button><button type="button" class="sec" id="rest">Ripristina l'archivio da GitHub</button>
 <h3>Come ottenere il token (una volta sola)</h3>
 <ol><li>Su GitHub apri Settings, poi Developer settings, Personal access tokens, Fine-grained tokens, Generate new token.</li><li>In Repository access scegli Only select repositories e il repository dell'app.</li><li>In Repository permissions imposta Contents su Read and write.</li><li>Genera il token e incollalo qui sopra: resta salvato solo in questo browser.</li></ol>
@@ -103,7 +114,13 @@ ${D.notices.length?`<ul class="l">${D.notices.map((n,i)=>`<li class="task"><div>
 <label for="imp">Importa un backup privato</label><input id="imp" type="file" accept=".json"></section>`;
 bind();if(f&&$(f))$(f).focus()}
 async function setCode(p,n){const b=p.pdfFile&&await idbGet(p.code);if(b){await idbSet(n,b);p.pdfDirty=true}if(p.pdfFile)await idbSet(p.code,null);p.code=n}
-let qt;
+let qt,KEYS=null,NQ=[];
+async function genVapid(){const k=await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign"]),j=await crypto.subtle.exportKey("jwk",k.privateKey);
+ const u=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0)),pub=new Uint8Array(65);pub[0]=4;pub.set(u(j.x),1);pub.set(u(j.y),33);
+ return{pub:b64x(pub).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""),priv:j.d}}
+function flushNotify(s){const q=NQ;NQ=[];if(!q.length||!s.vapid||!s.api)return false;const url=s.api.replace(/cambio-codice\/?$/,"notifiche");
+ const ids=[...new Set(q.filter(e=>e.tipo=="piano").flatMap(e=>e.ids))],evs=q.filter(e=>e.tipo=="avviso");if(ids.length)evs.push({tipo:"piano",ids});
+ evs.forEach(ev=>fetch(url,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({...ev,azione:"invia",pass:s.pass,delay:30})}).catch(()=>{}));return true}
 function bind(){const p=D.patients[edit];
 $("qs")&&($("qs").oninput=()=>{clearTimeout(qt);const q=$("qs").value.trim().toLowerCase();let n=0;document.querySelectorAll("#plist li").forEach(li=>{const h=q&&!li.dataset.name.includes(q);li.hidden=!!h;if(!h)n++});qt=setTimeout(()=>say(n+(n==1?" paziente trovato":" pazienti trovati")),700)});
 document.querySelectorAll("[data-r]").forEach(b=>b.onclick=async()=>{const x=D.patients[+b.dataset.r];if(!confirm("Generare un nuovo codice per "+x.name+"? Il vecchio smetterà di funzionare."))return;
@@ -119,9 +136,9 @@ $("pform").onsubmit=async e=>{e.preventDefault();const n=$("pn").value.trim(),pl
  if(!n){say("Scrivi il nome e cognome del paziente.",{err:true});$("pn").focus();return}
  if(!pl&&!f&&!p?.pdfFile){say("Inserisci il piano in testo oppure carica un PDF.",{err:true});$("pp").focus();return}
  if(f&&f.size>10485760){say("Il PDF è troppo grande: il massimo è 10 megabyte.",{err:true});return}
- const code=p?p.code:gen(),o=p||{code};Object.assign(o,{name:n,plan:pl,notes:$("pt").value.trim(),updated:today()});
+ const chg=p&&(p.plan!==pl||(p.notes||"")!==$("pt").value.trim()||!!f);const code=p?p.code:gen(),o=p||{code,id:gen()};Object.assign(o,{name:n,plan:pl,notes:$("pt").value.trim(),updated:today()});
  if(f){try{await idbSet(code,new Uint8Array(await f.arrayBuffer()));o.pdfDirty=true;o.pdfFile=o.pdfFile||"p/"+Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,"0")).join("")+".enc"}catch(x){say("Non riesco a salvare il PDF in questo browser.",{err:true});return}}
- if(p){edit=-1;save();render();say("Modifiche salvate per "+n+". Ricordati di scaricare e caricare il pacchetto aggiornato.",{focus:true})}
+ if(p){edit=-1;if(chg)NQ.push({tipo:"piano",ids:[o.id]});save();render();say("Modifiche salvate per "+n+". Ricordati di scaricare e caricare il pacchetto aggiornato.",{focus:true})}
  else{D.patients.push(o);save();render();say("Paziente creato: "+n+". Codice di accesso: "+code+". Lettera per lettera: "+spell(code)+".",{focus:true})}};
 $("rp")&&($("rp").onclick=async()=>{await idbSet(p.code,null);D.trash=[...(D.trash||[]),p.pdfFile];delete p.pdfFile;save();render("pn");say("PDF rimosso.")});
 $("canc")&&($("canc").onclick=()=>{edit=-1;render("pn");say("Modifica annullata.")});
@@ -134,18 +151,21 @@ $("cform").onsubmit=e=>{e.preventDefault();const t=$("ct").value.trim(),k=$("ck"
  D.challenge={month:$("cm").value,title:t,tasks:k,target:Math.max(1,+$("cg").value||20)};save();render();say("Sfida personalizzata salvata per "+mname(D.challenge.month)+". Pubblica il pacchetto per renderla visibile.",{focus:true})};
 $("noc").onclick=()=>{D.challenge={month:CM,title:"",tasks:[],target:20};save();render();say("Tornata alla sfida automatica.",{focus:true})};
 $("nform").onsubmit=e=>{e.preventDefault();const t=$("nt").value.trim();if(!t){say("Scrivi il testo dell'avviso.",{err:true});$("nt").focus();return}
- D.notices.unshift({date:today(),text:t});save();render();say("Avviso aggiunto. Pubblica il pacchetto per renderlo visibile.",{focus:true})};
+ D.notices.unshift({date:today(),text:t});NQ.push({tipo:"avviso",testo:t});save();render();say("Avviso aggiunto. Pubblica il pacchetto per renderlo visibile.",{focus:true})};
 document.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{D.notices.splice(+b.dataset.n,1);save();render("h-not");say("Avviso eliminato.")});
-$("sform").onsubmit=async e=>{e.preventDefault();const repo=$("sr").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/$/,""),token=$("stk").value.trim(),pass=$("spw").value;
+$("sform").onsubmit=async e=>{e.preventDefault();const api=$("sapi").value.trim(),repo=$("sr").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/$/,""),token=$("stk").value.trim(),pass=$("spw").value;
  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){say("Scrivi il repository nel formato nomeutente/nomerepo.",{err:true});$("sr").focus();return}
  if(!token){say("Incolla il token di accesso.",{err:true});$("stk").focus();return}
+ if(api&&!/^https:\/\//.test(api)){say("L'indirizzo del servizio deve iniziare con https://.",{err:true});$("sapi").focus();return}
  if(pass.length<10){say("La frase segreta deve avere almeno 10 caratteri.",{err:true});$("spw").focus();return}
  say("Verifica del collegamento in corso.");
  try{const r=await fetch("https://api.github.com/repos/"+repo,{headers:{Authorization:"Bearer "+token,Accept:"application/vnd.github+json"}});
   if(!r.ok)throw new Error(r.status==404||r.status==401?"repository o token non validi (errore "+r.status+")":"errore "+r.status);
   const j=await r.json();if(j.permissions&&j.permissions.push===false)throw new Error("il token non ha il permesso di scrittura sui contenuti");
-  localStorage.setItem("wn_sync",JSON.stringify({repo,token,pass}));say("Collegamento verificato. Da ora ogni modifica viene pubblicata e archiviata da sola.",{focus:true});publish()}
+  localStorage.setItem("wn_sync",JSON.stringify({repo,token,pass,api,vapid:SY().vapid}));say("Collegamento verificato. Da ora ogni modifica viene pubblicata e archiviata da sola.",{focus:true});publish()}
  catch(x){say("Collegamento non riuscito: "+x.message,{err:true,focus:true})}};
+$("gvapid").onclick=async()=>{if(SY().vapid&&!confirm("Esistono già delle chiavi. Generandone di nuove i pazienti dovranno riattivare le notifiche. Continuare?"))return;
+ try{KEYS=await genVapid();const s=SY();s.vapid=KEYS.pub;localStorage.setItem("wn_sync",JSON.stringify(s));render("h-push");say("Chiavi generate. Copiale su Vercel come VAPID_PUBLIC e VAPID_PRIVATE.",{focus:true});schedule()}catch(x){say("Generazione non riuscita: "+x.message,{err:true})}};
 $("pnow").onclick=()=>publish(true);
 $("rest").onclick=async()=>{const s=SY();if(!s.repo){say("Prima salva il collegamento.",{err:true});return}
  if(!confirm("Ripristinare l'archivio da GitHub? I dati di questo dispositivo verranno sostituiti."))return;
@@ -170,8 +190,8 @@ function problems(){const p=[];
 return p}
 window.addEventListener("error",e=>{try{say("Errore nella pagina: "+e.message+". "+problems().join(" "),{err:true})}catch(x){}});
 function lock(err){$("app").innerHTML=`${problems().length?`<div class="card msgbox err" role="alert">${problems().map(esc).join(" ")}</div>`:""}<section class="card" aria-labelledby="h-lock"><h2 id="h-lock">Accesso all'area studio</h2><form id="lf"><label for="ac">Codice amministratore</label><input id="ac" type="password" inputmode="numeric" autocomplete="off" aria-describedby="lerr"><p id="lerr" role="${err?"alert":"status"}">${err?"Codice errato. Riprova.":""}</p><button type="submit">Entra</button></form></section>`;
- $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";try{if(await sha("wn-admin:"+$("ac").value.replace(/\s/g,""))===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)}catch(x){$("lerr").setAttribute("role","alert");$("lerr").textContent="Errore: "+(x&&x.message||x)+". "+problems().join(" ")}};
+ $("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="Verifica in corso.";try{if(await sha("wn-admin:"+$("ac").value.replace(/\s/g,""))===HASH){try{sessionStorage.setItem("wn_ok","1")}catch(x){}render();syncIn();say("Accesso effettuato. Usa i titoli o i link in alto per spostarti tra le sezioni: nuovo paziente, elenco pazienti, sfida mensile, avvisi, pubblicazione e backup.",{focus:true})}else setTimeout(()=>{lock(true);$("ac").focus()},800)}catch(x){$("lerr").setAttribute("role","alert");$("lerr").textContent="Errore: "+(x&&x.message||x)+". "+problems().join(" ")}};
  $("ac").focus()}
 let ok=false;try{ok=sessionStorage.getItem("wn_ok")==="1"}catch(e){}
-ok?render():lock();
+ok?(render(),syncIn()):lock();
 </script></body></html>
